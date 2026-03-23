@@ -106,10 +106,15 @@ class VehicleDetector:
         vehicles, emergency = self._vehicles_from_coco(raw_result)
         vehicles, emergency = self._merge_ambulance_detections(frame, vehicles, emergency)
 
+        # Check GPS-based emergency
+        gps_emergency = self._check_gps_emergency()
+        final_emergency = emergency or gps_emergency
+
         out = {
             "vehicles": vehicles,
             "count": len(vehicles),
-            "emergency": emergency,
+            "emergency": final_emergency,
+            "gps_emergency": gps_emergency,
             "raw_result": raw_result,
         }
         return self._attach_fusion(out, video_source_hint)
@@ -343,6 +348,34 @@ class VehicleDetector:
         
         print(f"YOLOWorld fallback: added {len(ambulance_boxes)} ambulance detection(s)")
         return filtered_vehicles, True
+
+    def _check_gps_emergency(self) -> bool:
+        """
+        Check for GPS-based ambulance emergency by calling the GPS server API.
+
+        Returns:
+            True if any ambulance is within emergency distance, False otherwise
+        """
+        try:
+            import requests
+            from config import GPS_SERVER_URL
+
+            # Call the GPS server's check-ambulance endpoint
+            response = requests.get(f"{GPS_SERVER_URL}/check-ambulance", timeout=2)
+            response.raise_for_status()
+
+            result = response.json()
+            gps_emergency = result.get("emergency", False)
+
+            return gps_emergency
+
+        except (requests.exceptions.RequestException, ImportError) as e:
+            # GPS server unavailable or network error - don't fail detection
+            print(f"GPS emergency check failed: {e}")
+            return False
+        except Exception as e:
+            print(f"Unexpected error in GPS emergency check: {e}")
+            return False
 
     def _attach_fusion(
         self,

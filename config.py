@@ -54,3 +54,9 @@ AMBULANCE_AUX_MODEL_PATH = "assets/models/ambulance.pt"  # Legacy compatibility
 # Custom model: 0.3 (higher precision), YOLOWorld fallback: 0.05 (higher recall)
 AMBULANCE_CONFIDENCE = 0.3  # Default confidence for custom model
 AMBULANCE_WORLD_CONFIDENCE = 0.05  # Lower threshold for YOLOWorld fallback
+
+# GPS-based ambulance detection
+CAMERA_LAT = 26.9124  # Camera latitude (Jaipur, India)
+CAMERA_LON = 75.7873  # Camera longitude (Jaipur, India)
+GPS_SERVER_URL = "http://localhost:8000"  # GPS server endpoint
+EMERGENCY_DISTANCE_KM = 0.5  # Distance threshold for GPS emergency detection (0.5 km)

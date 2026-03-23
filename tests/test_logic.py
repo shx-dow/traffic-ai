@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Then import your modules
 from logic.counter import LaneCounter
+from logic.emergency import apply_emergency_override, is_emergency_active
 from logic.signal import SignalController
 
 
@@ -123,6 +124,32 @@ def test_emergency_override_and_resume():
     print("PASS test_emergency_override_and_resume")
 
 
+def test_is_emergency_active_sources():
+    assert is_emergency_active() is False
+    assert is_emergency_active(vision_emergency=True) is True
+    assert is_emergency_active(gps_emergency=True) is True
+    assert is_emergency_active(manual_trigger=True) is True
+    print("PASS test_is_emergency_active_sources")
+
+
+def test_apply_emergency_override_states():
+    base = {'north': 'GREEN', 'south': 'RED', 'east': 'RED', 'west': 'RED'}
+
+    no_emergency = apply_emergency_override(base, False)
+    assert no_emergency == base
+
+    all_green = apply_emergency_override(base, True)
+    assert all(v == 'GREEN' for v in all_green.values())
+
+    corridor = apply_emergency_override(base, True, corridor_lane='east')
+    assert corridor['east'] == 'GREEN'
+    assert corridor['north'] == 'RED'
+    assert corridor['south'] == 'RED'
+    assert corridor['west'] == 'RED'
+
+    print("PASS test_apply_emergency_override_states")
+
+
 if __name__ == '__main__':
     test_count_per_lane_basic()
     test_assign_lane_directional_split()
@@ -130,3 +157,5 @@ if __name__ == '__main__':
     test_green_times_clamped()
     test_zero_traffic_no_crash()
     test_emergency_override_and_resume()
+    test_is_emergency_active_sources()
+    test_apply_emergency_override_states()

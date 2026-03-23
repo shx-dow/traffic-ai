@@ -2,6 +2,19 @@
 
 from __future__ import annotations
 
+CONFIG = {
+    "video_source": 0,
+    "model_path": "yolov8n.pt",
+    "frame_width": 1280,
+    "frame_height": 720,
+    "min_green_time": 10,
+    "max_green_time": 60,
+    "detection_confidence": 0.4,
+    "display_window": True,
+    "save_output": False,
+    "output_path": "artifacts/demo_output.mp4",
+}
+
 VEHICLE_CLASSES = {
     2: "car",
     3: "motorcycle",

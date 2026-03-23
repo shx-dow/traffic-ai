@@ -52,6 +52,7 @@ def run_repo_pipeline(*, disable_gps: bool):
     _run_cmd([python, "tests/test_runtime.py"], cwd=repo_root)
     _run_cmd([python, "tests/test_simulation.py"], cwd=repo_root)
     _run_cmd([python, "tests/test_metrics.py"], cwd=repo_root)
+    _run_cmd([python, "tests/test_overlay.py"], cwd=repo_root)
     _run_cmd([python, "tests/test_custom_ambulance.py"], cwd=repo_root)
     _run_cmd([python, "tests/test_detector_logic.py"], cwd=repo_root)
 

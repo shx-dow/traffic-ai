@@ -2,34 +2,40 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import signal
 import sys
 import time
 
 import cv2
 
-from config import BASELINE_GREEN_SECONDS, DEFAULT_SIGNAL_MODE, MODEL_PATH
+from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
+                    MODEL_PATH)
 
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
+from ui.overlay import TrafficOverlay
 from utils.helpers import run_repo_pipeline
 from vision.detector import VehicleDetector
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="AI Traffic Management — main runtime")
-    p.add_argument("--video-source", default=0,
+    p.add_argument("--video-source", default=CONFIG["video_source"],
                    help="Video source (0 for webcam or path to video file)")
-    p.add_argument("--model-path", default=MODEL_PATH,
+    p.add_argument("--model-path", default=CONFIG.get("model_path", MODEL_PATH),
                    help="Path to YOLO model weights")
-    p.add_argument("--frame-width", type=int, default=1280)
-    p.add_argument("--frame-height", type=int, default=720)
+    p.add_argument("--frame-width", type=int, default=CONFIG["frame_width"])
+    p.add_argument("--frame-height", type=int, default=CONFIG["frame_height"])
     p.add_argument("--mode", choices=("adaptive", "baseline"), default=DEFAULT_SIGNAL_MODE)
     p.add_argument("--baseline-green-seconds", type=int, default=BASELINE_GREEN_SECONDS)
     p.add_argument("--headless", action="store_true",
-                   help="Run without opening a display window (useful for CI)")
+                    help="Run without opening a display window (useful for CI)")
+    p.add_argument("--max-frames", type=int, default=0, help="Stop after N frames (0 means no limit)")
+    p.add_argument("--save-output", action="store_true", default=CONFIG.get("save_output", False))
+    p.add_argument("--output-path", default=CONFIG.get("output_path", "artifacts/demo_output.mp4"))
     p.add_argument("--run-pipeline", action="store_true", help="Run core repo validation checks before main loop")
     p.add_argument(
         "--disable-gps",
@@ -93,6 +99,8 @@ def main() -> None:
 
     detector = VehicleDetector(model_path=args.model_path)
     counter = LaneCounter(frame_width, frame_height)
+    overlay = TrafficOverlay()
+
     if args.mode == "baseline":
         signal_ctrl = BaselineSignalController(green_seconds=args.baseline_green_seconds)
     else:
@@ -101,9 +109,21 @@ def main() -> None:
     lanes = ["north", "south", "east", "west"]
     active_lane = lanes[0]
     frame_counter = 0
+    processed_frames = 0
 
     fps = 30
     frame_delay_ms = int(1000 / fps)
+    display_window = (not args.headless) and bool(CONFIG.get("display_window", True))
+
+    writer = None
+    if args.save_output:
+        out_path = Path(args.output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(str(out_path), fourcc, float(fps), (frame_width, frame_height))
+        if not writer.isOpened():
+            print(f"Warning: failed to open video writer at {out_path}")
+            writer = None
 
     print(f"Starting main loop in {args.mode} mode. Press 'q' in window to quit.")
 
@@ -148,11 +168,25 @@ def main() -> None:
             else:
                 frame_counter += 1
 
-        display = frame.copy()
+        display = overlay.draw(
+            frame.copy(),
+            detection_result=detection,
+            lane_counts=lane_counts,
+            signal_states=signal_states,
+            emergency_active=bool(detection.get("emergency", False)),
+        )
         cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
         cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
-        if not args.headless:
+        if writer is not None:
+            writer.write(display)
+
+        processed_frames += 1
+        if args.max_frames > 0 and processed_frames >= args.max_frames:
+            print(f"Reached max frames: {args.max_frames}")
+            break
+
+        if display_window:
             cv2.imshow("Traffic System", display)
             key = cv2.waitKey(frame_delay_ms) & 0xFF
             if key == ord("q"):
@@ -163,7 +197,10 @@ def main() -> None:
             time.sleep(1.0 / fps)
 
     cap.release()
-    if not args.headless:
+    if writer is not None:
+        writer.release()
+
+    if display_window:
         cv2.destroyAllWindows()
 
     if gps_proc is not None:

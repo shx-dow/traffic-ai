@@ -8,6 +8,8 @@ import time
 
 import cv2
 
+from config import BASELINE_GREEN_SECONDS, DEFAULT_SIGNAL_MODE, MODEL_PATH
+
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.runtime import select_corridor_lane
@@ -20,12 +22,12 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="AI Traffic Management — main runtime")
     p.add_argument("--video-source", default=0,
                    help="Video source (0 for webcam or path to video file)")
-    p.add_argument("--model-path", default="yolov8n.pt",
+    p.add_argument("--model-path", default=MODEL_PATH,
                    help="Path to YOLO model weights")
     p.add_argument("--frame-width", type=int, default=1280)
     p.add_argument("--frame-height", type=int, default=720)
-    p.add_argument("--mode", choices=("adaptive", "baseline"), default="adaptive")
-    p.add_argument("--baseline-green-seconds", type=int, default=20)
+    p.add_argument("--mode", choices=("adaptive", "baseline"), default=DEFAULT_SIGNAL_MODE)
+    p.add_argument("--baseline-green-seconds", type=int, default=BASELINE_GREEN_SECONDS)
     p.add_argument("--headless", action="store_true",
                    help="Run without opening a display window (useful for CI)")
     p.add_argument("--run-pipeline", action="store_true", help="Run core repo validation checks before main loop")

@@ -1,73 +1,76 @@
-# AI Traffic Flow Optimizer & Emergency Green Corridor System
+# AI Traffic Flow Optimizer and Emergency Green Corridor
 
-## Project Overview
+## Scope
 
-This prototype demonstrates a real-time traffic management workflow built around
-computer vision and simple decision logic. A video stream is analyzed to detect
-vehicles, count traffic by lane, estimate density, and choose a signal state.
-When an emergency is simulated or detected, the system can override the normal
-flow and activate an all-green corridor for a short time.
+This repository implements the core logic for a single-intersection traffic controller:
 
-## Features
+- real-time vehicle detection
+- lane-wise counting
+- adaptive signal policy
+- emergency override behavior
+- baseline vs adaptive benchmark with metrics output
 
-- Real-time vehicle detection with YOLOv8
-- Lane-aware vehicle counting and simple density estimation
-- Dynamic traffic signal selection
-- Emergency vehicle override for a green corridor demo
-- Modular structure for team collaboration
+UI and multi-intersection orchestration are separate workstreams.
 
-## Architecture
+## Core modules
 
-Pipeline:
+- `main.py`: runtime entrypoint, supports adaptive and baseline signal modes
+- `vision/detector.py`: YOLO detection and emergency flag integration
+- `logic/counter.py`: lane assignment and per-lane vehicle counts
+- `logic/signal.py`: adaptive signal controller (fairness and anti-flap switching)
+- `logic/baseline_signal.py`: fixed-cycle baseline controller for A/B comparison
+- `logic/simulation.py`: deterministic frame-event simulation runner
+- `logic/metrics.py`: metric computation and baseline/adaptive comparison
+- `scripts/run_benchmark.py`: benchmark command that writes `artifacts/metrics.json`
 
-`Video -> Detection -> Counting -> Decision -> Emergency Override -> Overlay -> Display`
+## Setup
 
-Module responsibilities:
+```bash
+pip install -r requirements.txt
+```
 
-- `main.py`: Coordinates the full runtime loop
-- `vision/detector.py`: Runs YOLO inference and returns structured detections
-- `logic/counter.py`: Counts vehicles and splits them across lanes
-- `logic/signal.py`: Decides which lane gets the green signal
-- `logic/emergency.py`: Simulates emergency activation and override behavior
-- `ui/overlay.py`: Draws detections, counts, and signal state on the frame
-- `utils/helpers.py`: Shared helper functions
-- `config.py`: Centralized thresholds, classes, and display settings
+## Run
 
-## Setup Instructions
+Adaptive mode:
 
-1. Install Python dependencies:
+```bash
+python main.py --mode adaptive --video-source assets/sample_video.mp4
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+Baseline mode:
 
-2. Run the prototype:
+```bash
+python main.py --mode baseline --baseline-green-seconds 20 --video-source assets/sample_video.mp4
+```
 
-   ```bash
-   python main.py
-   ```
+Optional core preflight checks before runtime:
 
-3. Update the sample video path in `config.py` if needed.
-4. Models
-The YOLO models are already included via Git LFS:  
-- `yolov8n.pt`  
-- `yolov8s-worldv2.pt`
+```bash
+python main.py --run-pipeline --mode adaptive --video-source assets/sample_video.mp4
+```
 
- 5. Datasets
-Download the datasets from [Google Drive](https://drive.google.com/drive/folders/1xVwY0hLK6ayaCfcOdZ_rkqZhbTqPfgIO?usp=share_link) and place them in the `data/` folder of the project.
+## Benchmark
 
-## Demo Instructions
+Generate baseline vs adaptive metrics:
 
-- The demo is designed to run on a sample video source.
-- If emergency simulation is implemented, the automated system 
-  should be working properly (or press the configured key during playback
-  to trigger the green corridor override).
-- Use the on-screen overlay to verify detection counts and signal decisions.
+```bash
+python scripts/run_benchmark.py
+```
 
-## Team Structure Suggestion
+Output file:
 
-- Vision owner: `vision/detector.py`
-- Traffic logic owner: `logic/counter.py` and `logic/signal.py`
-- Emergency flow owner: `logic/emergency.py`
-- UI/visualization owner: `ui/overlay.py`
-- Integration owner: `main.py`, `config.py`, and launch flow
+- `artifacts/metrics.json`
+
+## Tests
+
+Run core logic tests:
+
+```bash
+python tests/test_logic.py
+python tests/test_baseline_signal.py
+python tests/test_runtime.py
+python tests/test_simulation.py
+python tests/test_metrics.py
+python tests/test_custom_ambulance.py
+python tests/test_detector_logic.py
+```

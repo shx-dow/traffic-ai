@@ -18,6 +18,8 @@ FRAME_DISPLAY_SIZE = (1280, 720)
 
 MODEL_PATH = "yolov8n.pt"
 VIDEO_SOURCE = "assets/sample_video.mp4"
+DEFAULT_SIGNAL_MODE = "adaptive"
+BASELINE_GREEN_SECONDS = 20
 
 REAL_TIME_TRAFFIC_ASSET_DIR = "assets/real_time_traffic"  # place real_traffic.zip here
 REAL_TRAFFIC_ZIP_NAME = "real_traffic.zip"
@@ -28,7 +30,7 @@ FINDVEHICLE_TRAIN_TXT = "assets/findvehicle/FindVehicle_train.txt"
 FINDVEHICLE_TEST_TXT = "assets/findvehicle/FindVehicle_test.txt"
 FINDVEHICLE_TRAIN_JSONL = "assets/findvehicle/FindVehicle_train.jsonl"
 
-DETECTOR_ENRICH_CROSS_DATASET = True  # adds fusion dict (video + FindVehicle ontology)
+DETECTOR_ENRICH_CROSS_DATASET = False
 VISION_TRAFFIC_DATASET_NAME = "real_time_traffic"
 FINDVEHICLE_SCHEMA_NAME = "FindVehicle"
 
@@ -36,7 +38,7 @@ FINDVEHICLE_SCHEMA_NAME = "FindVehicle"
 AMBULANCE_DETECTION_MODE = "custom"
 AMBULANCE_WORLD_MODEL = "yolov8s-worldv2.pt"
 AMBULANCE_CUSTOM_MODEL_PATH = "assets/models/ambulance.pt"
-AMBULANCE_AUX_MODEL_PATH = "assets/models/ambulance.pt"
+AMBULANCE_AUX_MODEL_PATH = "assets/models/ambulance_aux.pt"
 AMBULANCE_CONFIDENCE = 0.3
 AMBULANCE_WORLD_CONFIDENCE = 0.05  # lower threshold for YOLOWorld (higher recall)
 

@@ -35,7 +35,7 @@ def _run_cmd(cmd: list[str], *, cwd: str) -> int:
     return subprocess.run(cmd, cwd=cwd).returncode
 
 
-def run_repo_pipeline(*, synthetic_frames: int, headless_frames: int, disable_gps: bool):
+def run_repo_pipeline(*, disable_gps: bool):
     """
     Run repo-wide validations/tests/scripts that are safe for local/CI usage.
 
@@ -45,14 +45,11 @@ def run_repo_pipeline(*, synthetic_frames: int, headless_frames: int, disable_gp
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     python = sys.executable
 
-    print("\n=== Repo pipeline: compile + unit tests + headless smoke ===")
+    print("\n=== Repo pipeline: compile + core tests ===")
     subprocess.run([python, "-m", "compileall", "."], cwd=repo_root, check=False)
     _run_cmd([python, "tests/test_logic.py"], cwd=repo_root)
-
-    _run_cmd(
-        [python, "tests/test_detector.py", "--synthetic", "--max-frames", str(synthetic_frames)],
-        cwd=repo_root,
-    )
+    _run_cmd([python, "tests/test_runtime.py"], cwd=repo_root)
+    _run_cmd([python, "tests/test_detector_logic.py"], cwd=repo_root)
 
     gps_proc = None
     gps_host = "localhost"
@@ -71,38 +68,6 @@ def run_repo_pipeline(*, synthetic_frames: int, headless_frames: int, disable_gp
         _run_cmd([python, "tests/test_gps_integration.py"], cwd=repo_root)
     else:
         print("\n=== GPS disabled: skipping gps_server + tests/test_gps_integration.py ===")
-
-    rc = _run_cmd(
-        [python, "scripts/run_headless_main.py", "--frames", str(headless_frames)],
-        cwd=repo_root,
-    )
-    if rc != 0:
-        print("run_headless_main.py failed with --frames; retrying without --frames...")
-        _run_cmd([python, "scripts/run_headless_main.py"], cwd=repo_root)
-
-    zip_path = os.path.join(repo_root, "assets", "real_time_traffic", "real_traffic.zip")
-    if os.path.isfile(zip_path):
-        _run_cmd([python, "scripts/extract_real_traffic.py"], cwd=repo_root)
-    else:
-        print("\n=== real_traffic.zip not found: skipping scripts/extract_real_traffic.py ===")
-
-    findvehicle_py = os.path.join(repo_root, "data", "findvehicle.py")
-    findvehicle_pkg_dir = os.path.join(repo_root, "data", "findvehicle")
-    if os.path.exists(findvehicle_py) or os.path.isdir(findvehicle_pkg_dir):
-        _run_cmd([python, "scripts/analyze_findvehicle.py"], cwd=repo_root)
-    else:
-        print("\n=== data.findvehicle module not found: skipping scripts/analyze_findvehicle.py ===")
-
-    sample_img = os.path.join(
-        repo_root, "assets", "ambulance_dataset", "carsdataset", "ambulance", "0AL642VPYDA4.jpg",
-    )
-    if os.path.isfile(sample_img):
-        _run_cmd(
-            [python, "scripts/validate_ambulance.py", "--image", sample_img, "--ambulance-conf", "0.15"],
-            cwd=repo_root,
-        )
-    else:
-        print("\n=== Sample ambulance image not found: skipping scripts/validate_ambulance.py ===")
 
     print("\n=== Pipeline finished. Starting real-time main loop ===")
     return gps_proc

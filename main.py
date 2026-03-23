@@ -5,7 +5,6 @@ import argparse
 import signal
 import sys
 import time
-from typing import Dict
 
 import cv2
 
@@ -26,9 +25,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--frame-height", type=int, default=720)
     p.add_argument("--headless", action="store_true",
                    help="Run without opening a display window (useful for CI)")
-    p.add_argument("--skip-pipeline", action="store_true", help="Skip repo validation steps")
-    p.add_argument("--pipeline-synthetic-frames", type=int, default=3, help="Frames for detector --synthetic test")
-    p.add_argument("--pipeline-headless-frames", type=int, default=10, help="Frames for run_headless_main.py")
+    p.add_argument("--run-pipeline", action="store_true", help="Run core repo validation checks before main loop")
     p.add_argument(
         "--disable-gps",
         action="store_true",
@@ -69,10 +66,8 @@ def main() -> None:
     args = parse_args()
 
     gps_proc = None
-    if not args.skip_pipeline:
+    if args.run_pipeline:
         gps_proc = run_repo_pipeline(
-            synthetic_frames=args.pipeline_synthetic_frames,
-            headless_frames=args.pipeline_headless_frames,
             disable_gps=args.disable_gps,
         )
 

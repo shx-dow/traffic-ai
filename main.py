@@ -25,8 +25,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--frame-height", type=int, default=720)
     p.add_argument("--headless", action="store_true",
                    help="Run without opening a display window (useful for CI)")
-    # "Run the entire project" mode:
-    # runs validations/tests/scripts first, then starts the real-time loop.
     p.add_argument("--skip-pipeline", action="store_true", help="Skip repo validation steps")
     p.add_argument("--pipeline-synthetic-frames", type=int, default=3, help="Frames for detector --synthetic test")
     p.add_argument("--pipeline-headless-frames", type=int, default=10, help="Frames for run_headless_main.py")
@@ -102,17 +100,13 @@ def main() -> None:
 
         detection = detector.detect(frame)
 
-        # Counting and signal timing
         lane_counts = counter.count_per_lane(detection["vehicles"])
         green_times = signal_ctrl.calculate_green_times(lane_counts)
 
-        # Emergency handling: if detection reports emergency, trigger override
         if detection.get("emergency") and signal_ctrl.mode != "EMERGENCY":
-            # choose a corridor lane: for demo pick the lane with max vehicles
             corridor = max(lane_counts.items(), key=lambda kv: kv[1])[0]
             signal_ctrl.override_for_emergency(corridor)
 
-        # Get signal states
         if signal_ctrl.mode == "EMERGENCY":
             signal_states = signal_ctrl.current_state
         else:
@@ -126,7 +120,6 @@ def main() -> None:
 
             frame_counter += 1
 
-        # Draw basic overlay: show counts and mode text
         display = frame.copy()
         cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
         cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
@@ -138,7 +131,6 @@ def main() -> None:
                 print("'q' pressed — exiting")
                 break
 
-        # allow a tiny sleep when headless so loop is not tight
         if args.headless:
             time.sleep(1.0 / fps)
 

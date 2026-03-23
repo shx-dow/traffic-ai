@@ -100,10 +100,9 @@ def test_emergency_override_and_resume():
 
 
 if __name__ == '__main__':
-    print("Running Issue #2 unit tests...\n")
     test_count_per_lane_basic()
     test_green_times_proportional()
     test_green_times_clamped()
     test_zero_traffic_no_crash()
     test_emergency_override_and_resume()
-    print("\nAll 5 tests passed. Issue #2 is ready for integration.")
+    

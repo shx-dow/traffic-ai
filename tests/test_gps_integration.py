@@ -13,13 +13,14 @@ import requests
 
 from vision.detector import VehicleDetector
 from gps_utils import calculate_distance, CAMERA_LAT, CAMERA_LON
+from config import GPS_SERVER_URL
 
 
 def test_gps_server():
     """Test GPS server endpoints."""
     print("🧪 Testing GPS Server...")
 
-    gps_server_url = "http://localhost:8000"
+    gps_server_url = GPS_SERVER_URL
 
     try:
         response = requests.get(f"{gps_server_url}/health", timeout=5)

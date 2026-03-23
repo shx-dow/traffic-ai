@@ -63,8 +63,5 @@ class SignalController:
         return self.get_current_signal_state(corridor_lane)
 
     def resume_adaptive(self):
-        """
-        Restore normal adaptive mode.
-        """
         self.mode = 'ADAPTIVE'
 

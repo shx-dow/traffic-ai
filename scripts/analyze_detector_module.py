@@ -41,7 +41,10 @@ def analyze_vision_detector() -> bool:
         params = list(sig.parameters.keys())
         all_pass &= check_requirement("Has __init__ method", True, f"Parameters: {params}")
         all_pass &= check_requirement("Accepts model_path parameter", "model_path" in params)
-        all_pass &= check_requirement("Loads YOLO model", hasattr(VehicleDetector, "_model"))
+        # _model is set on instances, not the class — instantiate to verify
+        import numpy as np
+        _tmp = VehicleDetector(model_path="yolov8n.pt")
+        all_pass &= check_requirement("Loads YOLO model", hasattr(_tmp, "_model"))
     except Exception as e:
         all_pass &= check_requirement("__init__ method", False, str(e))
 
@@ -53,7 +56,9 @@ def analyze_vision_detector() -> bool:
         all_pass &= check_requirement("Has detect method", "detect" in dir(VehicleDetector), f"Signature: detect({', '.join(params)})")
         all_pass &= check_requirement("Accepts frame parameter", "frame" in params)
         return_annotation = sig.return_annotation
-        all_pass &= check_requirement("Returns dict", "dict" in str(return_annotation) or return_annotation == dict, f"Return type: {return_annotation}")
+        # Accept Dict[str, Any], dict, or any annotation containing "dict"
+        ann_str = str(return_annotation).lower()
+        all_pass &= check_requirement("Returns dict", "dict" in ann_str, f"Return type: {return_annotation}")
     except Exception as e:
         all_pass &= check_requirement("detect() method", False, str(e))
 

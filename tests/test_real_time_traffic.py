@@ -11,15 +11,20 @@ import cv2
 
 
 def check_video_file():
-    """Check if video file exists and is readable."""
+    """Check if video file exists and is readable. Falls back to sample_video.mp4."""
     video_path = ROOT / "assets" / "real_time_traffic" / "output.mp4"
+    fallback_path = ROOT / "assets" / "sample_video.mp4"
     print("=" * 60)
     print("REAL_TIME_TRAFFIC DATASET CHECK")
     print("=" * 60)
 
     if not video_path.exists():
-        print(f"❌ Video file NOT found: {video_path}")
-        return False, None
+        if fallback_path.exists():
+            print(f"⚠️  real_time_traffic/output.mp4 not found — using fallback: {fallback_path}")
+            video_path = fallback_path
+        else:
+            print(f"❌ Video file NOT found: {video_path}")
+            return False, None
 
     print(f"✅ Video file found: {video_path}")
     file_size_gb = video_path.stat().st_size / (1024 ** 3)

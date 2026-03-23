@@ -14,14 +14,14 @@ from vision.detector import VehicleDetector
 def test_ambulance_detection():
     """Test ambulance detection with custom model priority."""
 
-    # Test image path (update this to your test image)
-    test_image = "/Users/soumaydhrub/Downloads/carsdataset/ambulance/0AL642VPYDA4.jpg"
+    # Test image path — resolved relative to project root
+    test_image = ROOT / "assets" / "ambulance_dataset" / "carsdataset" / "ambulance" / "0AL642VPYDA4.jpg"
 
-    if not Path(test_image).exists():
+    if not test_image.exists():
         print(f"Test image not found: {test_image}")
         return
 
-    frame = cv2.imread(test_image)
+    frame = cv2.imread(str(test_image))
     if frame is None:
         print("Failed to load test image")
         return

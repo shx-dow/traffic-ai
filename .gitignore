@@ -11,3 +11,11 @@ runs/
 
 # OS files
 .DS_Store
+
+.venv/
+
+# Generated benchmark and smoke-run outputs
+artifacts/
+
+# Local test video copies
+assets/sample_video1.mp4

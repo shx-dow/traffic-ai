@@ -10,6 +10,7 @@ from typing import Dict
 import cv2
 
 from logic.counter import LaneCounter
+from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
 from utils.helpers import run_repo_pipeline
 from vision.detector import VehicleDetector
@@ -45,6 +46,16 @@ def open_capture(source) -> cv2.VideoCapture:
     return cap
 
 
+def get_capture_dimensions(cap: cv2.VideoCapture, default_width: int, default_height: int) -> tuple[int, int]:
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if width <= 0:
+        width = default_width
+    if height <= 0:
+        height = default_height
+    return width, height
+
+
 class GracefulExit:
     def __init__(self):
         self.exit = False
@@ -78,8 +89,10 @@ def main() -> None:
         print("Failed to open video source", args.video_source)
         sys.exit(1)
 
+    frame_width, frame_height = get_capture_dimensions(cap, args.frame_width, args.frame_height)
+
     detector = VehicleDetector(model_path=args.model_path)
-    counter = LaneCounter(args.frame_width, args.frame_height)
+    counter = LaneCounter(frame_width, frame_height)
     signal_ctrl = SignalController()
 
     lanes = ["north", "south", "east", "west"]
@@ -104,8 +117,16 @@ def main() -> None:
         green_times = signal_ctrl.calculate_green_times(lane_counts)
 
         if detection.get("emergency") and signal_ctrl.mode != "EMERGENCY":
-            corridor = max(lane_counts.items(), key=lambda kv: kv[1])[0]
+            corridor = select_corridor_lane(
+                vehicles=detection["vehicles"],
+                lane_counts=lane_counts,
+                lane_counter=counter,
+                fallback_lane=lanes[active_index],
+            )
             signal_ctrl.override_for_emergency(corridor)
+
+        if not detection.get("emergency") and signal_ctrl.mode == "EMERGENCY":
+            signal_ctrl.resume_adaptive()
 
         if signal_ctrl.mode == "EMERGENCY":
             signal_states = signal_ctrl.current_state

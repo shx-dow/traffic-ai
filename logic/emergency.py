@@ -1,8 +1,3 @@
-"""Emergency vehicle simulation and green corridor override logic.
-
-This module should provide a simple demo-friendly switch that can override the
-normal signal decision and force an all-green state.
-"""
 
 from __future__ import annotations
 

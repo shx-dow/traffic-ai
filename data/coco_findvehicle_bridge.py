@@ -1,10 +1,4 @@
-"""Minimal stub for cross-dataset fusion used by `vision.detector`.
 
-This lightweight implementation only attaches a simple `fusion` entry to
-the `out` dict so downstream code can exercise the fusion path during
-integration tests. It intentionally avoids any heavyweight I/O or
-third-party dependencies.
-"""
 from typing import Any, Dict
 from datetime import datetime
 

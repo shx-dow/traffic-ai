@@ -1,7 +1,3 @@
-# logic/counter.py
-# Owner: Issue #2 assignee
-# Depends on: vision/detector.py (Issue #1) — consumes detection['vehicles']
-# Consumed by: logic/signal.py, ui/overlay.py, main.py
 
 class LaneCounter:
     """

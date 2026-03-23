@@ -1,4 +1,3 @@
-"""Locate traffic video files on disk (e.g. under assets/real_time_traffic)."""
 
 from __future__ import annotations
 

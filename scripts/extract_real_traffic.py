@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-"""
-Extract local ``assets/real_time_traffic/real_traffic.zip`` into the same folder.
-
-No network or Hugging Face login — the zip must already be on disk.
-
-Examples:
-  python scripts/extract_real_traffic.py
-  python scripts/extract_real_traffic.py --dir assets/real_time_traffic
-  python scripts/extract_real_traffic.py --force   # extract even if videos already exist
-"""
 
 from __future__ import annotations
 

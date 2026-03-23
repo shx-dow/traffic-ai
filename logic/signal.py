@@ -1,7 +1,3 @@
-# logic/signal.py
-# Owner: Issue #2 assignee
-# Depends on: logic/counter.py (Issue #2) — consumes count_per_lane output
-# Consumed by: ui/overlay.py, logic/emergency.py, main.py
 
 class SignalController:
     """

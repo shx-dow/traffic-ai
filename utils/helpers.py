@@ -77,9 +77,9 @@ def run_repo_pipeline(*, synthetic_frames: int, headless_frames: int, disable_gp
                 time.sleep(0.25)
 
         # GPS integration tests (requires server).
-        _run_cmd([python, "test_gps_integration.py"], cwd=repo_root)
+        _run_cmd([python, "tests/test_gps_integration.py"], cwd=repo_root)
     else:
-        print("\n=== GPS disabled: skipping gps_server + test_gps_integration.py ===")
+        print("\n=== GPS disabled: skipping gps_server + tests/test_gps_integration.py ===")
 
     # Headless pipeline runner (validates detector->counter->signal loop).
     rc = _run_cmd(

@@ -1,8 +1,3 @@
-"""
-GPS utilities for ambulance detection.
-
-Contains distance calculation using Haversine formula and emergency detection logic.
-"""
 
 from __future__ import annotations
 

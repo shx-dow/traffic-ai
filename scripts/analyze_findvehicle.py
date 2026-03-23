@@ -1,15 +1,3 @@
-#!/usr/bin/env python3
-"""
-Analyze FindVehicle NER data for traffic-oriented entity statistics.
-
-Download `FindVehicle_train.jsonl` / `FindVehicle_test.jsonl` from the dataset authors
-(Google Drive / Baidu — see https://github.com/GuanRunwei/FindVehicle ) and pass the path.
-
-Examples:
-  python scripts/analyze_findvehicle.py --jsonl assets/findvehicle/sample.jsonl
-  python scripts/analyze_findvehicle.py --conll assets/findvehicle/FindVehicle_train.txt --limit 10000
-  python scripts/analyze_findvehicle.py --conll assets/findvehicle/FindVehicle_test.txt --limit 5000
-"""
 
 from __future__ import annotations
 

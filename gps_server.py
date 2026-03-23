@@ -1,9 +1,3 @@
-"""
-GPS-based ambulance detection server using FastAPI.
-
-This server maintains real-time ambulance locations and provides endpoints
-for updating locations and retrieving active ambulances.
-"""
 
 from __future__ import annotations
 

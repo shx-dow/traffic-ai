@@ -1,4 +1,3 @@
-"""YOLOv8-based vehicle detection — single-frame inference for the traffic pipeline."""
 
 from __future__ import annotations
 
@@ -36,7 +35,6 @@ class VehicleDetector:
         self._logger = logging.getLogger(__name__)
         if enrich_cross_dataset is None:
             from config import DETECTOR_ENRICH_CROSS_DATASET
-
             enrich_cross_dataset = DETECTOR_ENRICH_CROSS_DATASET
         self._enrich_cross_dataset = enrich_cross_dataset
 
@@ -60,7 +58,7 @@ class VehicleDetector:
         self._world_model: Any = None
         self._ambulance_custom: YOLO | None = None
         self._ambulance_aux: YOLO | None = None
-        
+
         # Load custom ambulance model (highest priority)
         if self._ambulance_mode in ("custom", "aux_weights"):
             custom_path = Path(AMBULANCE_CUSTOM_MODEL_PATH)
@@ -72,7 +70,7 @@ class VehicleDetector:
                     self._logger.exception("Failed to load custom ambulance model: %s", custom_path)
             else:
                 self._logger.info("Custom ambulance model not found: %s", custom_path)
-                
+
         # Legacy aux_weights support
         if self._ambulance_mode == "aux_weights":
             aux_path = Path(AMBULANCE_AUX_MODEL_PATH)
@@ -152,19 +150,19 @@ class VehicleDetector:
     ) -> Tuple[List[Dict[str, Any]], bool]:
         if self._ambulance_mode == "none":
             return vehicles, emergency
-            
+
         # Priority 1: Custom trained ambulance model (if available)
         if self._ambulance_mode in ("custom", "aux_weights") and self._ambulance_custom is not None:
             vehicles, emergency = self._append_custom_ambulance(frame, vehicles, emergency)
-            
+
         # Priority 2: Legacy aux_weights (if custom failed)
         if self._ambulance_mode == "aux_weights" and self._ambulance_aux is not None and not emergency:
             vehicles, emergency = self._append_aux_ambulance(frame, vehicles, emergency)
-            
+
         # Priority 3: YOLOWorld fallback (only when explicitly requested or custom model not available)
         if self._ambulance_mode == "yolo_world" or (self._ambulance_mode == "custom" and self._ambulance_custom is None and not emergency):
             vehicles, emergency = self._append_yolo_world_ambulance(frame, vehicles, emergency)
-            
+
         return vehicles, emergency
 
     def _append_aux_ambulance(
@@ -204,7 +202,7 @@ class VehicleDetector:
         """Append ambulance detections from custom trained model with duplicate avoidance."""
         if self._ambulance_custom is None:
             return vehicles, emergency
-            
+
         try:
             ar = self._ambulance_custom.predict(
                 source=frame,
@@ -214,14 +212,14 @@ class VehicleDetector:
         except Exception as e:
             print(f"Custom ambulance model prediction failed: {e}")
             return vehicles, emergency
-            
+
         if ar.boxes is None or len(ar.boxes) == 0:
             self._logger.debug("Custom ambulance model: no detections")
             return vehicles, emergency
-            
+
         names = ar.names
         ambulance_boxes = []
-        
+
         for box in ar.boxes:
             cls_id = int(box.cls[0].item())
             cls_name = str(names[cls_id]).lower()
@@ -231,11 +229,11 @@ class VehicleDetector:
             xyxy = box.xyxy[0].cpu().numpy()
             bbox = [float(xyxy[0]), float(xyxy[1]), float(xyxy[2]), float(xyxy[3])]
             ambulance_boxes.append({"class": "ambulance", "confidence": conf, "bbox": bbox})
-            
+
         if not ambulance_boxes:
             self._logger.debug("Custom ambulance model: no ambulance detections")
             return vehicles, emergency
-            
+
         # Remove overlapping vehicle detections (truck/car that might be ambulances)
         filtered_vehicles = []
         for vehicle in vehicles:
@@ -251,10 +249,10 @@ class VehicleDetector:
                     break
             if should_keep:
                 filtered_vehicles.append(vehicle)
-                
+
         # Add ambulance detections
         filtered_vehicles.extend(ambulance_boxes)
-        
+
         self._logger.info(
             "Custom ambulance model: added %d ambulance detection(s)", len(ambulance_boxes)
         )
@@ -263,31 +261,31 @@ class VehicleDetector:
     def _bboxes_overlap(self, bbox1: List[float], bbox2: List[float], iou_threshold: float = 0.5) -> bool:
         """Check if two bounding boxes overlap significantly."""
         return self._calculate_iou(bbox1, bbox2) > iou_threshold
-        
+
     def _calculate_iou(self, bbox1: List[float], bbox2: List[float]) -> float:
         """Calculate Intersection over Union (IoU) between two bounding boxes."""
         x1_1, y1_1, x2_1, y2_1 = bbox1
         x1_2, y1_2, x2_2, y2_2 = bbox2
-        
+
         # Calculate intersection
         x1_inter = max(x1_1, x1_2)
         y1_inter = max(y1_1, y1_2)
         x2_inter = min(x2_1, x2_2)
         y2_inter = min(y2_1, y2_2)
-        
+
         if x2_inter <= x1_inter or y2_inter <= y1_inter:
             return 0.0
-            
+
         inter_area = (x2_inter - x1_inter) * (y2_inter - y1_inter)
-        
+
         # Calculate union
         bbox1_area = (x2_1 - x1_1) * (y2_1 - y1_1)
         bbox2_area = (x2_2 - x1_2) * (y2_2 - y1_2)
         union_area = bbox1_area + bbox2_area - inter_area
-        
+
         if union_area == 0:
             return 0.0
-            
+
         return inter_area / union_area
 
     def _append_yolo_world_ambulance(
@@ -306,7 +304,7 @@ class VehicleDetector:
                 self._world_model = YOLOWorld(self._world_weights)
                 self._world_model.set_classes(["ambulance"])
                 print("Initialized YOLOWorld model for ambulance detection")
-                
+
             # Use lower confidence for fallback detection
             conf_threshold = self._ambulance_world_conf
             wr = self._world_model.predict(
@@ -317,16 +315,16 @@ class VehicleDetector:
         except Exception:
             self._logger.exception("YOLOWorld prediction failed")
             return vehicles, emergency
-            
+
         if wr.boxes is None or len(wr.boxes) == 0:
             self._logger.debug(
                 "YOLOWorld: no ambulance detections above %s confidence", conf_threshold
             )
             return vehicles, emergency
-            
+
         names = wr.names
         ambulance_boxes = []
-        
+
         for box in wr.boxes:
             cls_id = int(box.cls[0].item())
             cls_name = str(names[cls_id]).lower()
@@ -336,11 +334,11 @@ class VehicleDetector:
             xyxy = box.xyxy[0].cpu().numpy()
             bbox = [float(xyxy[0]), float(xyxy[1]), float(xyxy[2]), float(xyxy[3])]
             ambulance_boxes.append({"class": "ambulance", "confidence": conf, "bbox": bbox})
-            
+
         if not ambulance_boxes:
             self._logger.debug("YOLOWorld: no ambulance detections")
             return vehicles, emergency
-            
+
         # Remove overlapping vehicle detections (truck/car that might be ambulances)
         filtered_vehicles = []
         for vehicle in vehicles:
@@ -352,10 +350,10 @@ class VehicleDetector:
                     break
             if should_keep:
                 filtered_vehicles.append(vehicle)
-                
+
         # Add ambulance detections
         filtered_vehicles.extend(ambulance_boxes)
-        
+
         self._logger.info(
             "YOLOWorld fallback: added %d ambulance detection(s)", len(ambulance_boxes)
         )

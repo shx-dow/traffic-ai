@@ -1,9 +1,3 @@
-"""
-Ambulance GPS simulation script.
-
-Simulates ambulance movement towards the camera location, sending GPS updates
-to the FastAPI server every 2 seconds.
-"""
 
 import time
 import requests

@@ -9,10 +9,10 @@ from typing import Dict
 
 import cv2
 
-from vision.detector import VehicleDetector
 from logic.counter import LaneCounter
 from logic.signal import SignalController
 from utils.helpers import run_repo_pipeline
+from vision.detector import VehicleDetector
 
 
 def parse_args() -> argparse.Namespace:

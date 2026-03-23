@@ -55,6 +55,7 @@ def run_sample_test():
 
     try:
         import cv2
+
         from vision.detector import VehicleDetector
 
         frame = cv2.imread(str(test_image))

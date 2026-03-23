@@ -1,9 +1,10 @@
 
 import time
-import requests
 from typing import Tuple
 
-from config import GPS_SERVER_URL, CAMERA_LAT, CAMERA_LON
+import requests
+
+from config import CAMERA_LAT, CAMERA_LON, GPS_SERVER_URL
 
 # Starting location (~7 km south of camera)
 START_LAT = 26.8500
@@ -21,8 +22,9 @@ def calculate_next_position(current_lat: float, current_lon: float,
                           target_lat: float, target_lon: float,
                           speed_kmh: float, time_seconds: float) -> Tuple[float, float]:
     """Calculate next GPS position moving toward target at given speed."""
-    from gps_utils import calculate_distance
     import math
+
+    from gps_utils import calculate_distance
 
     distance_to_target = calculate_distance(current_lat, current_lon, target_lat, target_lon)
 

@@ -11,9 +11,9 @@ if str(ROOT) not in sys.path:
 import numpy as np
 import requests
 
-from vision.detector import VehicleDetector
-from gps_utils import calculate_distance, CAMERA_LAT, CAMERA_LON
 from config import GPS_SERVER_URL
+from gps_utils import CAMERA_LAT, CAMERA_LON, calculate_distance
+from vision.detector import VehicleDetector
 
 
 def test_gps_server():

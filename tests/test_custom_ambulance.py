@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import cv2
+
 from vision.detector import VehicleDetector
 
 

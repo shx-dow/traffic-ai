@@ -8,18 +8,20 @@ from __future__ import annotations
 
 import argparse
 import sys
-import numpy as np
 import time
 from pathlib import Path
+
+import numpy as np
 
 # Ensure repo root is on sys.path so `vision/` and `logic/` imports work.
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from vision.detector import VehicleDetector
 from logic.counter import LaneCounter
 from logic.signal import SignalController
+from vision.detector import VehicleDetector
+
 # logic.emergency in this repo contains only helper functions for demo.
 # We'll simulate a minimal EmergencyCorridorManager used by main.py.
 

@@ -66,6 +66,7 @@ def analyze_vision_detector() -> bool:
     print("-" * 70)
     try:
         import numpy as np
+
         from vision.detector import VehicleDetector
 
         detector = VehicleDetector(model_path="yolov8n.pt")
@@ -85,7 +86,7 @@ def analyze_vision_detector() -> bool:
     print("\n📋 REQUIREMENT 5: Vehicle Classes Detection")
     print("-" * 70)
     try:
-        from vision.detector import VEHICLE_CLASSES, TRACKED_CLASSES
+        from vision.detector import TRACKED_CLASSES, VEHICLE_CLASSES
         expected = {"car", "truck", "bus", "motorcycle", "bicycle"}
         all_pass &= check_requirement("VEHICLE_CLASSES defined", len(VEHICLE_CLASSES) > 0, f"Classes: {', '.join(sorted(VEHICLE_CLASSES))}")
         all_pass &= check_requirement("Includes required classes", expected.issubset(VEHICLE_CLASSES), f"Missing: {expected - VEHICLE_CLASSES}")
@@ -148,6 +149,7 @@ def test_real_detection() -> bool:
     all_pass = True
     try:
         import numpy as np
+
         from vision.detector import VehicleDetector
 
         print("\n🔧 Initializing VehicleDetector...")

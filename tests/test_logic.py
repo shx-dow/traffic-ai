@@ -1,10 +1,13 @@
-
-import sys
 import os
+import sys
+
+# Fix path FIRST
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Then import your modules
 from logic.counter import LaneCounter
-from logic.signal  import SignalController
+from logic.signal import SignalController
+
 
 def test_count_per_lane_basic():
     """A single vehicle must be counted exactly once in exactly one lane."""
@@ -105,4 +108,3 @@ if __name__ == '__main__':
     test_green_times_clamped()
     test_zero_traffic_no_crash()
     test_emergency_override_and_resume()
-    

@@ -28,15 +28,11 @@ class VehicleDetector:
         ambulance_mode: Optional[str] = None,
         ambulance_confidence: Optional[float] = None,
     ) -> None:
-        from config import (
-            AMBULANCE_AUX_MODEL_PATH,
-            AMBULANCE_CONFIDENCE,
-            AMBULANCE_CUSTOM_MODEL_PATH,
-            AMBULANCE_DETECTION_MODE,
-            AMBULANCE_WORLD_CONFIDENCE,
-            AMBULANCE_WORLD_MODEL,
-            DETECTOR_ENRICH_CROSS_DATASET,
-        )
+        from config import (AMBULANCE_AUX_MODEL_PATH, AMBULANCE_CONFIDENCE,
+                            AMBULANCE_CUSTOM_MODEL_PATH,
+                            AMBULANCE_DETECTION_MODE,
+                            AMBULANCE_WORLD_CONFIDENCE, AMBULANCE_WORLD_MODEL,
+                            DETECTOR_ENRICH_CROSS_DATASET)
 
         self._model = YOLO(model_path)
         self._logger = logging.getLogger(__name__)
@@ -183,6 +179,7 @@ class VehicleDetector:
     def _check_gps_emergency(self) -> bool:
         try:
             import requests
+
             from config import GPS_REQUEST_TIMEOUT_SECONDS, GPS_SERVER_URL
             r = requests.get(f"{GPS_SERVER_URL}/check-ambulance", timeout=GPS_REQUEST_TIMEOUT_SECONDS)
             r.raise_for_status()
@@ -197,8 +194,10 @@ class VehicleDetector:
         if not self._enrich_cross_dataset:
             return out
         try:
-            from config import FINDVEHICLE_SCHEMA_NAME, VISION_TRAFFIC_DATASET_NAME
-            from data.coco_findvehicle_bridge import attach_cross_dataset_fusion
+            from config import (FINDVEHICLE_SCHEMA_NAME,
+                                VISION_TRAFFIC_DATASET_NAME)
+            from data.coco_findvehicle_bridge import \
+                attach_cross_dataset_fusion
             attach_cross_dataset_fusion(out, vision_dataset=VISION_TRAFFIC_DATASET_NAME, text_dataset=FINDVEHICLE_SCHEMA_NAME, video_source_hint=video_source_hint)
         except Exception as e:
             self._logger.debug("Cross-dataset fusion unavailable: %s", e)

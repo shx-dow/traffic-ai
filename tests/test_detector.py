@@ -14,7 +14,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import config as app_config
-from utils.video_sources import ensure_real_traffic_extracted, first_video_under
+from utils.video_sources import (ensure_real_traffic_extracted,
+                                 first_video_under)
 from vision.detector import VehicleDetector
 
 # Classes the Day-1 brief asks to confirm on real traffic footage.

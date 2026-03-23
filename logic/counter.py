@@ -9,16 +9,10 @@ class LaneCounter:
     """
 
     def __init__(self, frame_width, frame_height):
-        mid_x = frame_width // 2
-        mid_y = frame_height // 2
-
-        # Each zone: (x1, y1, x2, y2) — top-left to bottom-right in pixels
-        self.lanes = {
-            'north': (0, 0, frame_width, mid_y),
-            'south': (0, mid_y, frame_width, frame_height),
-            'east': (mid_x, 0, frame_width, frame_height),
-            'west': (0, 0, mid_x, frame_height),
-        }
+        self.frame_width = frame_width
+        self.frame_height = frame_height
+        self.mid_x = frame_width / 2.0
+        self.mid_y = frame_height / 2.0
 
     def assign_lane(self, bbox):
         """
@@ -31,11 +25,12 @@ class LaneCounter:
         cx = (x1 + x2) / 2
         cy = (y1 + y2) / 2
 
-        for lane, (zx1, zy1, zx2, zy2) in self.lanes.items():
-            if zx1 <= cx <= zx2 and zy1 <= cy <= zy2:
-                return lane
+        dx = cx - self.mid_x
+        dy = cy - self.mid_y
 
-        return 'unknown'
+        if abs(dx) >= abs(dy):
+            return 'east' if dx >= 0 else 'west'
+        return 'south' if dy >= 0 else 'north'
 
     def count_per_lane(self, vehicles):
         """

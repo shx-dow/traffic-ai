@@ -31,6 +31,27 @@ def test_count_per_lane_basic():
     print("PASS test_count_per_lane_basic")
 
 
+def test_assign_lane_directional_split():
+    """Vehicles around frame center should map to one directional lane each."""
+    counter = LaneCounter(frame_width=1280, frame_height=720)
+
+    vehicles = [
+        {'class': 'car', 'confidence': 0.91, 'bbox': [1000, 330, 1080, 390]},  # east
+        {'class': 'car', 'confidence': 0.91, 'bbox': [200, 330, 280, 390]},    # west
+        {'class': 'car', 'confidence': 0.91, 'bbox': [620, 80, 700, 160]},     # north
+        {'class': 'car', 'confidence': 0.91, 'bbox': [620, 560, 700, 640]},    # south
+    ]
+
+    counts = counter.count_per_lane(vehicles)
+
+    assert counts['east'] == 1, f"Expected east=1, got {counts['east']}"
+    assert counts['west'] == 1, f"Expected west=1, got {counts['west']}"
+    assert counts['north'] == 1, f"Expected north=1, got {counts['north']}"
+    assert counts['south'] == 1, f"Expected south=1, got {counts['south']}"
+
+    print("PASS test_assign_lane_directional_split")
+
+
 def test_green_times_proportional():
     """Busiest lane must always get the most green time."""
     signal = SignalController()
@@ -104,6 +125,7 @@ def test_emergency_override_and_resume():
 
 if __name__ == '__main__':
     test_count_per_lane_basic()
+    test_assign_lane_directional_split()
     test_green_times_proportional()
     test_green_times_clamped()
     test_zero_traffic_no_crash()

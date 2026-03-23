@@ -42,11 +42,15 @@ VISION_TRAFFIC_DATASET_NAME = "real_time_traffic"
 FINDVEHICLE_SCHEMA_NAME = "FindVehicle"
 
 # Ambulance / emergency (COCO yolov8n has no ambulance class).
-# - "yolo_world": second pass with YOLOWorld + text "ambulance" (needs CLIP in requirements.txt).
-# - "aux_weights": custom YOLO .pt with an "ambulance" class at AMBULANCE_AUX_MODEL_PATH.
+# - "custom": custom trained YOLO model from assets/models/ambulance.pt (highest priority)
+# - "yolo_world": second pass with YOLOWorld + text "ambulance" (fallback)
+# - "aux_weights": legacy aux model path (deprecated)
 # - "none": only explicit ambulance if main model outputs that class name.
-AMBULANCE_DETECTION_MODE = "yolo_world"
+AMBULANCE_DETECTION_MODE = "custom"  # Prioritize custom trained model
 AMBULANCE_WORLD_MODEL = "yolov8s-worldv2.pt"
-AMBULANCE_AUX_MODEL_PATH = "assets/models/ambulance.pt"
+AMBULANCE_CUSTOM_MODEL_PATH = "assets/models/ambulance.pt"  # Custom trained ambulance model
+AMBULANCE_AUX_MODEL_PATH = "assets/models/ambulance.pt"  # Legacy compatibility
 # YOLOWorld open-vocab can miss tight crops; lower = more recall (more false positives).
-AMBULANCE_CONFIDENCE = 0.25
+# Custom model: 0.3 (higher precision), YOLOWorld fallback: 0.05 (higher recall)
+AMBULANCE_CONFIDENCE = 0.3  # Default confidence for custom model
+AMBULANCE_WORLD_CONFIDENCE = 0.05  # Lower threshold for YOLOWorld fallback

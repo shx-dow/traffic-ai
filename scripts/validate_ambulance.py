@@ -11,6 +11,8 @@ Uses the same VehicleDetector as the video pipeline (YOLOWorld + “ambulance”
 Options:
   --ambulance-mode none|yolo_world|aux_weights   (overrides config)
   --ambulance-conf FLOAT   (YOLOWorld / aux threshold; default from config.py)
+  # Adjusting the confidence threshold for ambulance detection
+  AMBULANCE_CONFIDENCE = 0.15  # Set in config.py
 """
 
 from __future__ import annotations

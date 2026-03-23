@@ -1,0 +1,5 @@
+train: "/Users/soumaydhrub/Library/Application Support/Cursor/traffic-ai/assets/ambulance_dataset/images/train"
+val:   "/Users/soumaydhrub/Library/Application Support/Cursor/traffic-ai/assets/ambulance_dataset/images/val"
+
+nc: 1
+names: ['ambulance']

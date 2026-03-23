@@ -96,9 +96,8 @@ def main() -> None:
     signal_ctrl = SignalController()
 
     lanes = ["north", "south", "east", "west"]
-    active_index = 0
+    active_lane = lanes[0]
     frame_counter = 0
-    green_times: Dict[str, int] = {lane: 15 for lane in lanes}
 
     fps = 30
     frame_delay_ms = int(1000 / fps)
@@ -114,32 +113,37 @@ def main() -> None:
         detection = detector.detect(frame)
 
         lane_counts = counter.count_per_lane(detection["vehicles"])
-        green_times = signal_ctrl.calculate_green_times(lane_counts)
-
         if detection.get("emergency") and signal_ctrl.mode != "EMERGENCY":
             corridor = select_corridor_lane(
                 vehicles=detection["vehicles"],
                 lane_counts=lane_counts,
                 lane_counter=counter,
-                fallback_lane=lanes[active_index],
+                fallback_lane=active_lane,
             )
             signal_ctrl.override_for_emergency(corridor)
 
         if not detection.get("emergency") and signal_ctrl.mode == "EMERGENCY":
             signal_ctrl.resume_adaptive()
+            frame_counter = 0
 
         if signal_ctrl.mode == "EMERGENCY":
             signal_states = signal_ctrl.current_state
         else:
-            active_lane = lanes[active_index]
             signal_states = signal_ctrl.get_current_signal_state(active_lane)
+            signal_ctrl.record_cycle(active_lane, lane_counts)
 
-            frames_needed = green_times.get(active_lane, 15) * fps
-            if frame_counter >= frames_needed:
-                active_index = (active_index + 1) % len(lanes)
+            should_switch = signal_ctrl.should_switch_lane(
+                active_lane=active_lane,
+                lane_counts=lane_counts,
+                frame_counter=frame_counter,
+                fps=fps,
+            )
+
+            if should_switch:
+                active_lane = signal_ctrl.choose_next_lane(active_lane, lane_counts)
                 frame_counter = 0
-
-            frame_counter += 1
+            else:
+                frame_counter += 1
 
         display = frame.copy()
         cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)

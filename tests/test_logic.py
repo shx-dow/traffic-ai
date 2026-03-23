@@ -124,6 +124,50 @@ def test_emergency_override_and_resume():
     print("PASS test_emergency_override_and_resume")
 
 
+def test_signal_min_hold_prevents_early_switch():
+    signal = SignalController()
+    counts = {'north': 1, 'south': 15, 'east': 0, 'west': 0}
+    fps = 30
+    frame_counter = int(signal.MIN_HOLD_SECONDS * fps) - 1
+
+    should_switch = signal.should_switch_lane(
+        active_lane='north',
+        lane_counts=counts,
+        frame_counter=frame_counter,
+        fps=fps,
+    )
+    assert should_switch is False
+    print("PASS test_signal_min_hold_prevents_early_switch")
+
+
+def test_signal_switches_when_gap_is_large():
+    signal = SignalController()
+    counts = {'north': 1, 'south': 12, 'east': 0, 'west': 0}
+    fps = 30
+    frame_counter = int(signal.MIN_HOLD_SECONDS * fps)
+
+    should_switch = signal.should_switch_lane(
+        active_lane='north',
+        lane_counts=counts,
+        frame_counter=frame_counter,
+        fps=fps,
+    )
+    assert should_switch is True
+    print("PASS test_signal_switches_when_gap_is_large")
+
+
+def test_signal_choose_next_lane_prefers_starved_lane():
+    signal = SignalController()
+    counts = {'north': 5, 'south': 3, 'east': 2, 'west': 1}
+
+    for _ in range(signal.MAX_WAIT_CYCLES):
+        signal.record_cycle('north', counts)
+
+    next_lane = signal.choose_next_lane('north', counts)
+    assert next_lane == 'south', f"Expected south due to starvation, got {next_lane}"
+    print("PASS test_signal_choose_next_lane_prefers_starved_lane")
+
+
 def test_is_emergency_active_sources():
     assert is_emergency_active() is False
     assert is_emergency_active(vision_emergency=True) is True
@@ -157,5 +201,8 @@ if __name__ == '__main__':
     test_green_times_clamped()
     test_zero_traffic_no_crash()
     test_emergency_override_and_resume()
+    test_signal_min_hold_prevents_early_switch()
+    test_signal_switches_when_gap_is_large()
+    test_signal_choose_next_lane_prefers_starved_lane()
     test_is_emergency_active_sources()
     test_apply_emergency_override_states()

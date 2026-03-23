@@ -54,7 +54,7 @@ The YOLO models are already included via Git LFS:
 - `yolov8s-worldv2.pt`
 
 5. Datasets
-Download the datasets from [Google Drive link](YOUR_LINK_HERE) and place them in the `data/` folder.
+Download the datasets from [Google Drive link]([(https://drive.google.com/drive/folders/1xVwY0hLK6ayaCfcOdZ_rkqZhbTqPfgIO?usp=share_link)]) and place them in the `data/` folder.
 
 ## Demo Instructions
 

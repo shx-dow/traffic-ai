@@ -48,6 +48,13 @@ Module responsibilities:
    ```
 
 3. Update the sample video path in `config.py` if needed.
+4. Models
+The YOLO models are already included via Git LFS:  
+- `yolov8n.pt`  
+- `yolov8s-worldv2.pt`
+
+5. Datasets
+Download the datasets from [Google Drive link](YOUR_LINK_HERE) and place them in the `data/` folder.
 
 ## Demo Instructions
 

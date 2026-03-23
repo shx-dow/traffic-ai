@@ -100,11 +100,16 @@ def test_distance_calculation():
         # Test distance from camera to itself (should be 0)
         distance = calculate_distance(CAMERA_LAT, CAMERA_LON, CAMERA_LAT, CAMERA_LON)
         assert distance < 0.001, f"Distance to self should be ~0, got {distance}"
-        print(".3f"        # Test distance to a point 1km away
+
+        print(f"Distance (self): {distance:.3f} km")
+
+        # Test distance to a point ~1km away
         test_lat, test_lon = 26.9214, 75.7873  # Approximately 1km north
         distance = calculate_distance(CAMERA_LAT, CAMERA_LON, test_lat, test_lon)
         assert 0.8 <= distance <= 1.2, f"Distance should be ~1km, got {distance}"
-        print(".3f"        return True
+
+        print(f"Distance (~1km): {distance:.3f} km")
+        return True
 
     except Exception as e:
         print(f"❌ Distance calculation test failed: {e}")

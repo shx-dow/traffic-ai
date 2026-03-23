@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
+import logging
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
@@ -32,6 +33,7 @@ class VehicleDetector:
         ambulance_confidence: float | None = None,
     ) -> None:
         self._model = YOLO(model_path)
+        self._logger = logging.getLogger(__name__)
         if enrich_cross_dataset is None:
             from config import DETECTOR_ENRICH_CROSS_DATASET
 
@@ -65,11 +67,11 @@ class VehicleDetector:
             if custom_path.is_file():
                 try:
                     self._ambulance_custom = YOLO(str(custom_path.resolve()))
-                    print(f"Loaded custom ambulance model: {custom_path}")
-                except Exception as e:
-                    print(f"Failed to load custom ambulance model: {e}")
+                    self._logger.info("Loaded custom ambulance model: %s", custom_path)
+                except Exception:
+                    self._logger.exception("Failed to load custom ambulance model: %s", custom_path)
             else:
-                print(f"Custom ambulance model not found: {custom_path}")
+                self._logger.info("Custom ambulance model not found: %s", custom_path)
                 
         # Legacy aux_weights support
         if self._ambulance_mode == "aux_weights":
@@ -214,7 +216,7 @@ class VehicleDetector:
             return vehicles, emergency
             
         if ar.boxes is None or len(ar.boxes) == 0:
-            print("Custom ambulance model: no detections")
+            self._logger.debug("Custom ambulance model: no detections")
             return vehicles, emergency
             
         names = ar.names
@@ -231,7 +233,7 @@ class VehicleDetector:
             ambulance_boxes.append({"class": "ambulance", "confidence": conf, "bbox": bbox})
             
         if not ambulance_boxes:
-            print("Custom ambulance model: no ambulance detections")
+            self._logger.debug("Custom ambulance model: no ambulance detections")
             return vehicles, emergency
             
         # Remove overlapping vehicle detections (truck/car that might be ambulances)
@@ -240,7 +242,11 @@ class VehicleDetector:
             should_keep = True
             for ambulance in ambulance_boxes:
                 if self._bboxes_overlap(vehicle["bbox"], ambulance["bbox"], iou_threshold=0.5):
-                    print(f"Replacing {vehicle['class']} with ambulance (IoU: {self._calculate_iou(vehicle['bbox'], ambulance['bbox']):.2f})")
+                    self._logger.info(
+                        "Replacing %s with ambulance (IoU: %.2f)",
+                        vehicle['class'],
+                        self._calculate_iou(vehicle['bbox'], ambulance['bbox'])
+                    )
                     should_keep = False
                     break
             if should_keep:
@@ -249,7 +255,9 @@ class VehicleDetector:
         # Add ambulance detections
         filtered_vehicles.extend(ambulance_boxes)
         
-        print(f"Custom ambulance model: added {len(ambulance_boxes)} ambulance detection(s)")
+        self._logger.info(
+            "Custom ambulance model: added %d ambulance detection(s)", len(ambulance_boxes)
+        )
         return filtered_vehicles, True
 
     def _bboxes_overlap(self, bbox1: List[float], bbox2: List[float], iou_threshold: float = 0.5) -> bool:
@@ -291,7 +299,7 @@ class VehicleDetector:
         try:
             from ultralytics import YOLOWorld
         except ImportError:
-            print("YOLOWorld import failed - CLIP not available")
+            self._logger.debug("YOLOWorld import failed - CLIP not available")
             return vehicles, emergency
         try:
             if self._world_model is None:
@@ -306,12 +314,14 @@ class VehicleDetector:
                 conf=conf_threshold,
                 verbose=False,
             )[0]
-        except Exception as e:
-            print(f"YOLOWorld prediction failed: {e}")
+        except Exception:
+            self._logger.exception("YOLOWorld prediction failed")
             return vehicles, emergency
             
         if wr.boxes is None or len(wr.boxes) == 0:
-            print(f"YOLOWorld: no ambulance detections above {conf_threshold} confidence")
+            self._logger.debug(
+                "YOLOWorld: no ambulance detections above %s confidence", conf_threshold
+            )
             return vehicles, emergency
             
         names = wr.names
@@ -328,7 +338,7 @@ class VehicleDetector:
             ambulance_boxes.append({"class": "ambulance", "confidence": conf, "bbox": bbox})
             
         if not ambulance_boxes:
-            print("YOLOWorld: no ambulance detections")
+            self._logger.debug("YOLOWorld: no ambulance detections")
             return vehicles, emergency
             
         # Remove overlapping vehicle detections (truck/car that might be ambulances)
@@ -346,7 +356,9 @@ class VehicleDetector:
         # Add ambulance detections
         filtered_vehicles.extend(ambulance_boxes)
         
-        print(f"YOLOWorld fallback: added {len(ambulance_boxes)} ambulance detection(s)")
+        self._logger.info(
+            "YOLOWorld fallback: added %d ambulance detection(s)", len(ambulance_boxes)
+        )
         return filtered_vehicles, True
 
     def _check_gps_emergency(self) -> bool:
@@ -358,10 +370,13 @@ class VehicleDetector:
         """
         try:
             import requests
-            from config import GPS_SERVER_URL
+            from config import GPS_REQUEST_TIMEOUT_SECONDS, GPS_SERVER_URL
 
             # Call the GPS server's check-ambulance endpoint
-            response = requests.get(f"{GPS_SERVER_URL}/check-ambulance", timeout=2)
+            response = requests.get(
+                f"{GPS_SERVER_URL}/check-ambulance",
+                timeout=GPS_REQUEST_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
 
             result = response.json()
@@ -371,10 +386,10 @@ class VehicleDetector:
 
         except (requests.exceptions.RequestException, ImportError) as e:
             # GPS server unavailable or network error - don't fail detection
-            print(f"GPS emergency check failed: {e}")
+            self._logger.debug("GPS emergency check failed: %s", e)
             return False
         except Exception as e:
-            print(f"Unexpected error in GPS emergency check: {e}")
+            self._logger.exception("Unexpected error in GPS emergency check")
             return False
 
     def _attach_fusion(
@@ -385,12 +400,23 @@ class VehicleDetector:
         if not self._enrich_cross_dataset:
             return out
         from config import FINDVEHICLE_SCHEMA_NAME, VISION_TRAFFIC_DATASET_NAME
-        from data.coco_findvehicle_bridge import attach_cross_dataset_fusion
 
-        attach_cross_dataset_fusion(
-            out,
-            vision_dataset=VISION_TRAFFIC_DATASET_NAME,
-            text_dataset=FINDVEHICLE_SCHEMA_NAME,
-            video_source_hint=video_source_hint,
-        )
+        try:
+            from data.coco_findvehicle_bridge import attach_cross_dataset_fusion
+        except Exception as e:
+            # Cross-dataset fusion module not available in this environment.
+            # Don't fail detection; return original output.
+            self._logger.debug("Cross-dataset fusion unavailable: %s", e)
+            return out
+
+        try:
+            attach_cross_dataset_fusion(
+                out,
+                vision_dataset=VISION_TRAFFIC_DATASET_NAME,
+                text_dataset=FINDVEHICLE_SCHEMA_NAME,
+                video_source_hint=video_source_hint,
+            )
+        except Exception:
+            self._logger.exception("attach_cross_dataset_fusion failed")
+
         return out

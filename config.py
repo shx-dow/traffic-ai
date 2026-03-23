@@ -60,3 +60,7 @@ CAMERA_LAT = 26.9124  # Camera latitude (Jaipur, India)
 CAMERA_LON = 75.7873  # Camera longitude (Jaipur, India)
 GPS_SERVER_URL = "http://localhost:8000"  # GPS server endpoint
 EMERGENCY_DISTANCE_KM = 0.5  # Distance threshold for GPS emergency detection (0.5 km)
+
+# Keep local/CI runs fast when the GPS server isn't running.
+# VehicleDetector will attempt the request, but should fail quickly.
+GPS_REQUEST_TIMEOUT_SECONDS = 0.5

@@ -48,6 +48,7 @@ def run_repo_pipeline(*, disable_gps: bool):
     print("\n=== Repo pipeline: compile + core tests ===")
     subprocess.run([python, "-m", "compileall", "."], cwd=repo_root, check=False)
     _run_cmd([python, "tests/test_logic.py"], cwd=repo_root)
+    _run_cmd([python, "tests/test_baseline_signal.py"], cwd=repo_root)
     _run_cmd([python, "tests/test_runtime.py"], cwd=repo_root)
     _run_cmd([python, "tests/test_detector_logic.py"], cwd=repo_root)
 

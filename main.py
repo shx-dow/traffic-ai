@@ -8,6 +8,7 @@ import time
 
 import cv2
 
+from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
@@ -23,6 +24,8 @@ def parse_args() -> argparse.Namespace:
                    help="Path to YOLO model weights")
     p.add_argument("--frame-width", type=int, default=1280)
     p.add_argument("--frame-height", type=int, default=720)
+    p.add_argument("--mode", choices=("adaptive", "baseline"), default="adaptive")
+    p.add_argument("--baseline-green-seconds", type=int, default=20)
     p.add_argument("--headless", action="store_true",
                    help="Run without opening a display window (useful for CI)")
     p.add_argument("--run-pipeline", action="store_true", help="Run core repo validation checks before main loop")
@@ -88,7 +91,10 @@ def main() -> None:
 
     detector = VehicleDetector(model_path=args.model_path)
     counter = LaneCounter(frame_width, frame_height)
-    signal_ctrl = SignalController()
+    if args.mode == "baseline":
+        signal_ctrl = BaselineSignalController(green_seconds=args.baseline_green_seconds)
+    else:
+        signal_ctrl = SignalController()
 
     lanes = ["north", "south", "east", "west"]
     active_lane = lanes[0]
@@ -97,7 +103,7 @@ def main() -> None:
     fps = 30
     frame_delay_ms = int(1000 / fps)
 
-    print("Starting main loop. Press 'q' in window to quit.")
+    print(f"Starting main loop in {args.mode} mode. Press 'q' in window to quit.")
 
     while not ge.exit and cap.isOpened():
         ret, frame = cap.read()

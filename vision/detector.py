@@ -108,13 +108,16 @@ class VehicleDetector:
             return vehicles, emergency
 
         if self._ambulance_mode in ("custom", "aux_weights") and self._ambulance_custom:
-            vehicles, emergency = self._run_ambulance_model(frame, vehicles, self._ambulance_custom, self._ambulance_conf)
+            vehicles, found = self._run_ambulance_model(frame, vehicles, self._ambulance_custom, self._ambulance_conf)
+            emergency = emergency or found
 
         if self._ambulance_mode == "aux_weights" and self._ambulance_aux and not emergency:
-            vehicles, emergency = self._run_ambulance_model(frame, vehicles, self._ambulance_aux, self._ambulance_conf)
+            vehicles, found = self._run_ambulance_model(frame, vehicles, self._ambulance_aux, self._ambulance_conf)
+            emergency = emergency or found
 
         if self._ambulance_mode == "yolo_world" or (self._ambulance_mode == "custom" and not self._ambulance_custom and not emergency):
-            vehicles, emergency = self._run_yolo_world(frame, vehicles)
+            vehicles, found = self._run_yolo_world(frame, vehicles)
+            emergency = emergency or found
 
         return vehicles, emergency
 

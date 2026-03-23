@@ -1,3 +1,6 @@
 ultralytics
 opencv-python
 numpy
+jsonlines
+# YOLOWorld ambulance head (open-vocabulary “ambulance”); required if AMBULANCE_DETECTION_MODE=yolo_world
+git+https://github.com/ultralytics/CLIP.git

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from ultralytics import YOLO
@@ -22,10 +23,48 @@ CONFIDENCE_THRESHOLD = 0.4
 class VehicleDetector:
     """Runs Ultralytics YOLO on BGR frames from OpenCV and returns a fixed contract dict."""
 
-    def __init__(self, model_path: str = "yolov8n.pt") -> None:
+    def __init__(
+        self,
+        model_path: str = "yolov8n.pt",
+        *,
+        enrich_cross_dataset: bool | None = None,
+        ambulance_mode: str | None = None,
+        ambulance_confidence: float | None = None,
+    ) -> None:
         self._model = YOLO(model_path)
+        if enrich_cross_dataset is None:
+            from config import DETECTOR_ENRICH_CROSS_DATASET
 
-    def detect(self, frame: np.ndarray) -> Dict[str, Any]:
+            enrich_cross_dataset = DETECTOR_ENRICH_CROSS_DATASET
+        self._enrich_cross_dataset = enrich_cross_dataset
+
+        from config import (
+            AMBULANCE_AUX_MODEL_PATH,
+            AMBULANCE_CONFIDENCE,
+            AMBULANCE_DETECTION_MODE,
+            AMBULANCE_WORLD_MODEL,
+        )
+
+        self._ambulance_mode = (
+            ambulance_mode if ambulance_mode is not None else AMBULANCE_DETECTION_MODE
+        ).lower()
+        self._ambulance_conf = float(
+            AMBULANCE_CONFIDENCE if ambulance_confidence is None else ambulance_confidence
+        )
+        self._world_weights = AMBULANCE_WORLD_MODEL
+        self._world_model: Any = None
+        self._ambulance_aux: YOLO | None = None
+        if self._ambulance_mode == "aux_weights":
+            aux_path = Path(AMBULANCE_AUX_MODEL_PATH)
+            if aux_path.is_file():
+                self._ambulance_aux = YOLO(str(aux_path.resolve()))
+
+    def detect(
+        self,
+        frame: np.ndarray,
+        *,
+        video_source_hint: str | None = None,
+    ) -> Dict[str, Any]:
         """
         Input  : numpy array (one video frame from OpenCV, BGR uint8)
         Output : {
@@ -33,6 +72,7 @@ class VehicleDetector:
             'count': int,
             'emergency': bool,
             'raw_result': Results,
+            'fusion': {...}   # optional when enrich_cross_dataset=True
         }
         """
         if frame is None or not isinstance(frame, np.ndarray):
@@ -45,17 +85,22 @@ class VehicleDetector:
         )
         raw_result: Results = results[0]
 
+        vehicles, emergency = self._vehicles_from_coco(raw_result)
+        vehicles, emergency = self._merge_ambulance_detections(frame, vehicles, emergency)
+
+        out = {
+            "vehicles": vehicles,
+            "count": len(vehicles),
+            "emergency": emergency,
+            "raw_result": raw_result,
+        }
+        return self._attach_fusion(out, video_source_hint)
+
+    def _vehicles_from_coco(self, raw_result: Results) -> Tuple[List[Dict[str, Any]], bool]:
         vehicles: List[Dict[str, Any]] = []
-        names = raw_result.names
-
         if raw_result.boxes is None or len(raw_result.boxes) == 0:
-            return {
-                "vehicles": [],
-                "count": 0,
-                "emergency": False,
-                "raw_result": raw_result,
-            }
-
+            return vehicles, False
+        names = raw_result.names
         for box in raw_result.boxes:
             cls_id = int(box.cls[0].item())
             cls_name = str(names[cls_id]).lower()
@@ -71,12 +116,102 @@ class VehicleDetector:
                     "bbox": bbox,
                 }
             )
-
         emergency = any(v["class"] in EMERGENCY_CLASS_NAMES for v in vehicles)
+        return vehicles, emergency
 
-        return {
-            "vehicles": vehicles,
-            "count": len(vehicles),
-            "emergency": emergency,
-            "raw_result": raw_result,
-        }
+    def _merge_ambulance_detections(
+        self,
+        frame: np.ndarray,
+        vehicles: List[Dict[str, Any]],
+        emergency: bool,
+    ) -> Tuple[List[Dict[str, Any]], bool]:
+        if self._ambulance_mode == "none":
+            return vehicles, emergency
+        if self._ambulance_mode == "aux_weights":
+            return self._append_aux_ambulance(frame, vehicles, emergency)
+        if self._ambulance_mode == "yolo_world":
+            return self._append_yolo_world_ambulance(frame, vehicles, emergency)
+        return vehicles, emergency
+
+    def _append_aux_ambulance(
+        self,
+        frame: np.ndarray,
+        vehicles: List[Dict[str, Any]],
+        emergency: bool,
+    ) -> Tuple[List[Dict[str, Any]], bool]:
+        if self._ambulance_aux is None:
+            return vehicles, emergency
+        ar = self._ambulance_aux.predict(
+            source=frame,
+            conf=self._ambulance_conf,
+            verbose=False,
+        )[0]
+        if ar.boxes is None or len(ar.boxes) == 0:
+            return vehicles, emergency
+        names = ar.names
+        for box in ar.boxes:
+            cls_id = int(box.cls[0].item())
+            cls_name = str(names[cls_id]).lower()
+            if "ambulance" not in cls_name:
+                continue
+            conf = float(box.conf[0].item())
+            xyxy = box.xyxy[0].cpu().numpy()
+            bbox = [float(xyxy[0]), float(xyxy[1]), float(xyxy[2]), float(xyxy[3])]
+            vehicles.append({"class": "ambulance", "confidence": conf, "bbox": bbox})
+            emergency = True
+        return vehicles, emergency
+
+    def _append_yolo_world_ambulance(
+        self,
+        frame: np.ndarray,
+        vehicles: List[Dict[str, Any]],
+        emergency: bool,
+    ) -> Tuple[List[Dict[str, Any]], bool]:
+        try:
+            from ultralytics import YOLOWorld
+        except ImportError:
+            return vehicles, emergency
+        try:
+            if self._world_model is None:
+                self._world_model = YOLOWorld(self._world_weights)
+                self._world_model.set_classes(["ambulance"])
+            wr = self._world_model.predict(
+                source=frame,
+                conf=self._ambulance_conf,
+                verbose=False,
+            )[0]
+        except Exception:
+            # Missing CLIP, bad weights, etc. — keep COCO-only output
+            return vehicles, emergency
+        if wr.boxes is None or len(wr.boxes) == 0:
+            return vehicles, emergency
+        names = wr.names
+        for box in wr.boxes:
+            cls_id = int(box.cls[0].item())
+            cls_name = str(names[cls_id]).lower()
+            if "ambulance" not in cls_name:
+                continue
+            conf = float(box.conf[0].item())
+            xyxy = box.xyxy[0].cpu().numpy()
+            bbox = [float(xyxy[0]), float(xyxy[1]), float(xyxy[2]), float(xyxy[3])]
+            vehicles.append({"class": "ambulance", "confidence": conf, "bbox": bbox})
+            emergency = True
+        return vehicles, emergency
+
+    def _attach_fusion(
+        self,
+        out: Dict[str, Any],
+        video_source_hint: str | None,
+    ) -> Dict[str, Any]:
+        if not self._enrich_cross_dataset:
+            return out
+        from config import FINDVEHICLE_SCHEMA_NAME, VISION_TRAFFIC_DATASET_NAME
+        from data.coco_findvehicle_bridge import attach_cross_dataset_fusion
+
+        attach_cross_dataset_fusion(
+            out,
+            vision_dataset=VISION_TRAFFIC_DATASET_NAME,
+            text_dataset=FINDVEHICLE_SCHEMA_NAME,
+            video_source_hint=video_source_hint,
+        )
+        return out

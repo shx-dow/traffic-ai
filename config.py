@@ -1,10 +1,19 @@
-"""Central configuration for the traffic AI prototype.
-
-Keep shared constants here so detection, traffic logic, and overlay rendering
-stay consistent across the project.
-"""
+"""Central configuration — all shared constants live here."""
 
 from __future__ import annotations
+
+CONFIG = {
+    "video_source": 0,
+    "model_path": "yolov8n.pt",
+    "frame_width": 1280,
+    "frame_height": 720,
+    "min_green_time": 10,
+    "max_green_time": 60,
+    "detection_confidence": 0.4,
+    "display_window": True,
+    "save_output": False,
+    "output_path": "artifacts/demo_output.mp4",
+}
 
 VEHICLE_CLASSES = {
     2: "car",
@@ -22,31 +31,33 @@ FRAME_DISPLAY_SIZE = (1280, 720)
 
 MODEL_PATH = "yolov8n.pt"
 VIDEO_SOURCE = "assets/sample_video.mp4"
+DEFAULT_SIGNAL_MODE = "adaptive"
+BASELINE_GREEN_SECONDS = 20
 
-# Real traffic videos: place `real_traffic.zip` in this folder (or extract it there).
-# Test harness auto-extracts the zip once if no video files are found yet.
-# Original dataset: UniDataPro real-time-traffic-video — license CC BY-NC-ND 4.0 where applicable.
-REAL_TIME_TRAFFIC_ASSET_DIR = "assets/real_time_traffic"
+REAL_TIME_TRAFFIC_ASSET_DIR = "assets/real_time_traffic"  # place real_traffic.zip here
 REAL_TRAFFIC_ZIP_NAME = "real_traffic.zip"
 
-# FindVehicle (text NER). CoNLL: FindVehicle_train.txt / FindVehicle_test.txt; jsonl optional.
-# Source: https://github.com/GuanRunwei/FindVehicle
+# FindVehicle NER dataset — https://github.com/GuanRunwei/FindVehicle
 FINDVEHICLE_DIR = "assets/findvehicle"
 FINDVEHICLE_TRAIN_TXT = "assets/findvehicle/FindVehicle_train.txt"
 FINDVEHICLE_TEST_TXT = "assets/findvehicle/FindVehicle_test.txt"
 FINDVEHICLE_TRAIN_JSONL = "assets/findvehicle/FindVehicle_train.jsonl"
 
-# When True, VehicleDetector adds a ``fusion`` dict (video + FindVehicle ontology); required keys unchanged.
-DETECTOR_ENRICH_CROSS_DATASET = True
+DETECTOR_ENRICH_CROSS_DATASET = False
 VISION_TRAFFIC_DATASET_NAME = "real_time_traffic"
 FINDVEHICLE_SCHEMA_NAME = "FindVehicle"
 
-# Ambulance / emergency (COCO yolov8n has no ambulance class).
-# - "yolo_world": second pass with YOLOWorld + text "ambulance" (needs CLIP in requirements.txt).
-# - "aux_weights": custom YOLO .pt with an "ambulance" class at AMBULANCE_AUX_MODEL_PATH.
-# - "none": only explicit ambulance if main model outputs that class name.
-AMBULANCE_DETECTION_MODE = "yolo_world"
+# "custom" | "yolo_world" | "aux_weights" | "none"
+AMBULANCE_DETECTION_MODE = "custom"
 AMBULANCE_WORLD_MODEL = "yolov8s-worldv2.pt"
-AMBULANCE_AUX_MODEL_PATH = "assets/models/ambulance.pt"
-# YOLOWorld open-vocab can miss tight crops; lower = more recall (more false positives).
-AMBULANCE_CONFIDENCE = 0.25
+AMBULANCE_CUSTOM_MODEL_PATH = "assets/models/ambulance.pt"
+AMBULANCE_AUX_MODEL_PATH = "assets/models/ambulance_aux.pt"
+AMBULANCE_CONFIDENCE = 0.3
+AMBULANCE_WORLD_CONFIDENCE = 0.05  # lower threshold for YOLOWorld (higher recall)
+
+# GPS emergency detection
+CAMERA_LAT = 26.9124  # Jaipur, India
+CAMERA_LON = 75.7873
+GPS_SERVER_URL = "http://localhost:8000"
+EMERGENCY_DISTANCE_KM = 0.5
+GPS_REQUEST_TIMEOUT_SECONDS = 0.5

@@ -1,15 +1,3 @@
-#!/usr/bin/env python3
-"""
-Analyze FindVehicle NER data for traffic-oriented entity statistics.
-
-Download `FindVehicle_train.jsonl` / `FindVehicle_test.jsonl` from the dataset authors
-(Google Drive / Baidu — see https://github.com/GuanRunwei/FindVehicle ) and pass the path.
-
-Examples:
-  python scripts/analyze_findvehicle.py --jsonl assets/findvehicle/sample.jsonl
-  python scripts/analyze_findvehicle.py --conll assets/findvehicle/FindVehicle_train.txt --limit 10000
-  python scripts/analyze_findvehicle.py --conll assets/findvehicle/FindVehicle_test.txt --limit 5000
-"""
 
 from __future__ import annotations
 
@@ -22,7 +10,9 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from data.findvehicle import aggregate_conll, aggregate_jsonl, iter_jsonl, map_entity_hints_to_yolo_classes, spans_from_jsonl_record
+from data.findvehicle import (aggregate_conll, aggregate_jsonl, iter_jsonl,
+                              map_entity_hints_to_yolo_classes,
+                              spans_from_jsonl_record)
 
 
 def main() -> None:

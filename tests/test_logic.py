@@ -1,0 +1,208 @@
+import os
+import sys
+
+# Fix path FIRST
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Then import your modules
+from logic.counter import LaneCounter
+from logic.emergency import apply_emergency_override, is_emergency_active
+from logic.signal import SignalController
+
+
+def test_count_per_lane_basic():
+    """A single vehicle must be counted exactly once in exactly one lane."""
+    counter = LaneCounter(frame_width=1280, frame_height=720)
+    vehicles = [{'class': 'car', 'confidence': 0.91,
+                 'bbox': [100, 50, 200, 150]}]
+    counts = counter.count_per_lane(vehicles)
+
+    # Exactly 1 vehicle counted in total
+    assert sum(counts.values()) == 1, \
+        f"Expected total=1, got {sum(counts.values())}"
+
+    # All 4 keys always present
+    assert all(k in counts for k in ['north', 'south', 'east', 'west']), \
+        "Missing lane keys in output"
+
+    # Values are integers
+    assert all(isinstance(v, int) for v in counts.values()), \
+        "Count values must be integers"
+
+    print("PASS test_count_per_lane_basic")
+
+
+def test_assign_lane_directional_split():
+    """Vehicles around frame center should map to one directional lane each."""
+    counter = LaneCounter(frame_width=1280, frame_height=720)
+
+    vehicles = [
+        {'class': 'car', 'confidence': 0.91, 'bbox': [1000, 330, 1080, 390]},  # east
+        {'class': 'car', 'confidence': 0.91, 'bbox': [200, 330, 280, 390]},    # west
+        {'class': 'car', 'confidence': 0.91, 'bbox': [620, 80, 700, 160]},     # north
+        {'class': 'car', 'confidence': 0.91, 'bbox': [620, 560, 700, 640]},    # south
+    ]
+
+    counts = counter.count_per_lane(vehicles)
+
+    assert counts['east'] == 1, f"Expected east=1, got {counts['east']}"
+    assert counts['west'] == 1, f"Expected west=1, got {counts['west']}"
+    assert counts['north'] == 1, f"Expected north=1, got {counts['north']}"
+    assert counts['south'] == 1, f"Expected south=1, got {counts['south']}"
+
+    print("PASS test_assign_lane_directional_split")
+
+
+def test_green_times_proportional():
+    """Busiest lane must always get the most green time."""
+    signal = SignalController()
+    counts = {'north': 20, 'south': 5, 'east': 10, 'west': 2}
+    times  = signal.calculate_green_times(counts)
+
+    assert times['north'] > times['east'], \
+        "North (20 cars) must beat East (10 cars)"
+    assert times['east']  > times['south'], \
+        "East (10 cars) must beat South (5 cars)"
+    assert times['south'] > times['west'], \
+        "South (5 cars) must beat West (2 cars)"
+
+    print("PASS test_green_times_proportional")
+
+
+def test_green_times_clamped():
+    """No lane must ever go below MIN or above MAX green time."""
+    signal = SignalController()
+    counts = {'north': 20, 'south': 5, 'east': 10, 'west': 2}
+    times  = signal.calculate_green_times(counts)
+
+    for lane, t in times.items():
+        assert t >= signal.MIN_GREEN, \
+            f"{lane}: {t}s is below MIN_GREEN ({signal.MIN_GREEN})"
+        assert t <= signal.MAX_GREEN, \
+            f"{lane}: {t}s exceeds MAX_GREEN ({signal.MAX_GREEN})"
+        assert isinstance(t, int), \
+            f"{lane}: green time must be int, got {type(t)}"
+
+    print("PASS test_green_times_clamped")
+
+
+def test_zero_traffic_no_crash():
+    """Zero vehicles must not cause ZeroDivisionError and must return MIN for all lanes."""
+    signal = SignalController()
+    counts = {'north': 0, 'south': 0, 'east': 0, 'west': 0}
+    times  = signal.calculate_green_times(counts)   # must not crash
+
+    assert all(t == signal.MIN_GREEN for t in times.values()), \
+        f"Expected all MIN_GREEN ({signal.MIN_GREEN}), got {times}"
+
+    print("PASS test_zero_traffic_no_crash")
+
+
+def test_emergency_override_and_resume():
+    """Emergency override must set mode, force one GREEN, and resume cleanly."""
+    signal = SignalController()
+
+    # Activate emergency
+    state = signal.override_for_emergency('north')
+
+    assert signal.mode    == 'EMERGENCY', \
+        f"Expected mode=EMERGENCY, got {signal.mode}"
+    assert state['north'] == 'GREEN', \
+        "Corridor lane must be GREEN"
+    assert state['south'] == 'RED', \
+        "Non-corridor lane must be RED"
+    assert state['east']  == 'RED', \
+        "Non-corridor lane must be RED"
+    assert state['west']  == 'RED', \
+        "Non-corridor lane must be RED"
+
+    # Resume adaptive
+    signal.resume_adaptive()
+    assert signal.mode == 'ADAPTIVE', \
+        f"Expected mode=ADAPTIVE after resume, got {signal.mode}"
+
+    print("PASS test_emergency_override_and_resume")
+
+
+def test_signal_min_hold_prevents_early_switch():
+    signal = SignalController()
+    counts = {'north': 1, 'south': 15, 'east': 0, 'west': 0}
+    fps = 30
+    frame_counter = int(signal.MIN_HOLD_SECONDS * fps) - 1
+
+    should_switch = signal.should_switch_lane(
+        active_lane='north',
+        lane_counts=counts,
+        frame_counter=frame_counter,
+        fps=fps,
+    )
+    assert should_switch is False
+    print("PASS test_signal_min_hold_prevents_early_switch")
+
+
+def test_signal_switches_when_gap_is_large():
+    signal = SignalController()
+    counts = {'north': 1, 'south': 12, 'east': 0, 'west': 0}
+    fps = 30
+    frame_counter = int(signal.MIN_HOLD_SECONDS * fps)
+
+    should_switch = signal.should_switch_lane(
+        active_lane='north',
+        lane_counts=counts,
+        frame_counter=frame_counter,
+        fps=fps,
+    )
+    assert should_switch is True
+    print("PASS test_signal_switches_when_gap_is_large")
+
+
+def test_signal_choose_next_lane_prefers_starved_lane():
+    signal = SignalController()
+    counts = {'north': 5, 'south': 3, 'east': 2, 'west': 1}
+
+    for _ in range(signal.MAX_WAIT_CYCLES):
+        signal.record_cycle('north', counts)
+
+    next_lane = signal.choose_next_lane('north', counts)
+    assert next_lane == 'south', f"Expected south due to starvation, got {next_lane}"
+    print("PASS test_signal_choose_next_lane_prefers_starved_lane")
+
+
+def test_is_emergency_active_sources():
+    assert is_emergency_active() is False
+    assert is_emergency_active(vision_emergency=True) is True
+    assert is_emergency_active(gps_emergency=True) is True
+    assert is_emergency_active(manual_trigger=True) is True
+    print("PASS test_is_emergency_active_sources")
+
+
+def test_apply_emergency_override_states():
+    base = {'north': 'GREEN', 'south': 'RED', 'east': 'RED', 'west': 'RED'}
+
+    no_emergency = apply_emergency_override(base, False)
+    assert no_emergency == base
+
+    all_green = apply_emergency_override(base, True)
+    assert all(v == 'GREEN' for v in all_green.values())
+
+    corridor = apply_emergency_override(base, True, corridor_lane='east')
+    assert corridor['east'] == 'GREEN'
+    assert corridor['north'] == 'RED'
+    assert corridor['south'] == 'RED'
+    assert corridor['west'] == 'RED'
+
+    print("PASS test_apply_emergency_override_states")
+
+
+if __name__ == '__main__':
+    test_count_per_lane_basic()
+    test_assign_lane_directional_split()
+    test_green_times_proportional()
+    test_green_times_clamped()
+    test_zero_traffic_no_crash()
+    test_emergency_override_and_resume()
+    test_signal_min_hold_prevents_early_switch()
+    test_signal_switches_when_gap_is_large()
+    test_signal_choose_next_lane_prefers_starved_lane()
+    test_is_emergency_active_sources()
+    test_apply_emergency_override_states()

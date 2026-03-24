@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ambulance GPS Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.active {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.inactive {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.sending {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .info {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #007bff;
+        }
+        .location-display {
+            font-family: monospace;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        button.stop {
+            background-color: #dc3545;
+        }
+        button.stop:hover {
+            background-color: #c82333;
+        }
+        .emergency-indicator {
+            display: none;
+            background-color: #dc3545;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            text-align: center;
+            font-weight: bold;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚑 Ambulance GPS Tracker</h1>
+
+        <div class="info">
+            <strong>Instructions:</strong>
+            <ul>
+                <li>Open this page on your mobile device</li>
+                <li>Allow location access when prompted</li>
+                <li>Click "Start Tracking" to begin sending GPS data</li>
+                <li>Data is sent every 2 seconds to the server</li>
+            </ul>
+        </div>
+
+        <div id="status" class="status inactive">
+            Status: Not tracking
+        </div>
+
+        <div id="emergencyIndicator" class="emergency-indicator">
+            🚨 EMERGENCY VEHICLE DETECTED NEARBY! 🚨
+        </div>
+
+        <div class="location-display">
+            <strong>Current Location:</strong><br>
+            <span id="locationData">No location data available</span>
+        </div>
+
+        <div class="location-display">
+            <strong>Last Update:</strong><br>
+            <span id="lastUpdate">Never</span>
+        </div>
+
+        <button id="startBtn" onclick="startTracking()">Start Tracking</button>
+        <button id="stopBtn" onclick="stopTracking()" disabled class="stop">Stop Tracking</button>
+
+        <div class="info">
+            <strong>Vehicle ID:</strong> <input type="text" id="vehicleId" value="AMB_MOBILE_001" style="padding: 5px; border: 1px solid #ccc; border-radius: 3px;">
+        </div>
+
+        <div class="info">
+            <strong>Server Status:</strong> <span id="serverStatus">Checking...</span>
+        </div>
+    </div>
+
+    <script>
+        let watchId = null;
+        let trackingInterval = null;
+        let isTracking = false;
+        const GPS_SERVER_URL = 'http://localhost:8000'; // Change this to your server IP when deploying
+
+        // Check server health on page load
+        checkServerHealth();
+
+        function checkServerHealth() {
+            fetch(`${GPS_SERVER_URL}/health`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('serverStatus').innerHTML = '<span style="color: green;">✅ Connected</span>';
+                })
+                .catch(error => {
+                    document.getElementById('serverStatus').innerHTML = '<span style="color: red;">❌ Server unreachable</span>';
+                    console.error('Server health check failed:', error);
+                });
+        }
+
+        function startTracking() {
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by this browser.');
+                return;
+            }
+
+            isTracking = true;
+            updateStatus('Starting GPS tracking...', 'sending');
+
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+
+            // Start watching position
+            watchId = navigator.geolocation.watchPosition(
+                handlePositionUpdate,
+                handlePositionError,
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 1000
+                }
+            );
+
+            // Also send updates every 2 seconds
+            trackingInterval = setInterval(() => {
+                if (isTracking && navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        handlePositionUpdate,
+                        handlePositionError,
+                        { enableHighAccuracy: true, timeout: 5000 }
+                    );
+                }
+            }, 2000);
+        }
+
+        function stopTracking() {
+            isTracking = false;
+            updateStatus('Tracking stopped', 'inactive');
+
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+
+            if (trackingInterval !== null) {
+                clearInterval(trackingInterval);
+                trackingInterval = null;
+            }
+
+            document.getElementById('emergencyIndicator').style.display = 'none';
+        }
+
+        function handlePositionUpdate(position) {
+            const coords = position.coords;
+            const vehicleId = document.getElementById('vehicleId').value;
+
+            // Update display
+            document.getElementById('locationData').innerHTML =
+                `Latitude: ${coords.latitude.toFixed(6)}<br>` +
+                `Longitude: ${coords.longitude.toFixed(6)}<br>` +
+                `Accuracy: ${coords.accuracy.toFixed(1)} meters<br>` +
+                `Speed: ${coords.speed ? (coords.speed * 3.6).toFixed(1) + ' km/h' : 'N/A'}`;
+
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
+            // Send to server
+            sendLocationToServer(vehicleId, coords.latitude, coords.longitude, coords.speed || 0);
+
+            updateStatus('Tracking active - sending GPS data', 'active');
+        }
+
+        function handlePositionError(error) {
+            let errorMessage = 'Unknown error occurred';
+
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage = 'Location access denied by user';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage = 'Location information unavailable';
+                    break;
+                case error.TIMEOUT:
+                    errorMessage = 'Location request timed out';
+                    break;
+            }
+
+            updateStatus(`GPS Error: ${errorMessage}`, 'inactive');
+            console.error('Geolocation error:', error);
+        }
+
+        function sendLocationToServer(vehicleId, lat, lon, speed) {
+            const payload = {
+                vehicle_id: vehicleId,
+                lat: lat,
+                lon: lon,
+                speed: speed * 3.6 // Convert m/s to km/h
+            };
+
+            fetch(`${GPS_SERVER_URL}/update-location`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('GPS update sent:', data);
+
+                // Check for emergency status
+                checkEmergencyStatus();
+            })
+            .catch(error => {
+                console.error('Failed to send GPS update:', error);
+                updateStatus('Failed to send GPS data to server', 'inactive');
+            });
+        }
+
+        function checkEmergencyStatus() {
+            fetch(`${GPS_SERVER_URL}/check-ambulance`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.emergency) {
+                        document.getElementById('emergencyIndicator').style.display = 'block';
+                        // Optional: Add vibration for mobile devices
+                        if ('vibrate' in navigator) {
+                            navigator.vibrate(500);
+                        }
+                    } else {
+                        document.getElementById('emergencyIndicator').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to check emergency status:', error);
+                });
+        }
+
+        function updateStatus(message, className) {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = `Status: ${message}`;
+            statusElement.className = `status ${className}`;
+        }
+
+        // Auto-check server health every 30 seconds
+        setInterval(checkServerHealth, 30000);
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && isTracking) {
+                console.log('Page hidden - GPS tracking continues in background');
+            }
+        });
+    </script>
+</body>
+</html>

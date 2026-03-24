@@ -1,8 +1,6 @@
 # Always track the .gitignore file
 !.gitignore
 
-# Created by venv; see https://docs.python.org/3/library/venv.html
-*
 
 # Python cache
 __pycache__/
@@ -13,3 +11,11 @@ runs/
 
 # OS files
 .DS_Store
+
+.venv/
+
+# Generated benchmark and smoke-run outputs
+artifacts/
+
+# Local test video copies
+assets/sample_video1.mp4

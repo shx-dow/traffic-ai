@@ -1,16 +1,3 @@
-#!/usr/bin/env python3
-"""
-Run VehicleDetector on a video file or webcam.
-
-Prints per-frame vehicle count and emergency flag (single-line updates to limit I/O),
-then reports average FPS and which COCO vehicle classes were seen.
-
-Usage:
-  python tests/test_detector.py --source /absolute/path/to/real_video.mp4
-  python tests/test_detector.py --source 0          # webcam (needs OS camera permission)
-  python tests/test_detector.py --synthetic         # no file/camera; FPS benchmark only
-  python tests/test_detector.py                     # sample mp4 → real_time_traffic (zip auto-extract) → webcam
-"""
 
 from __future__ import annotations
 
@@ -27,7 +14,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import config as app_config
-from utils.video_sources import ensure_real_traffic_extracted, first_video_under
+from utils.video_sources import (ensure_real_traffic_extracted,
+                                 first_video_under)
 from vision.detector import VehicleDetector
 
 # Classes the Day-1 brief asks to confirm on real traffic footage.

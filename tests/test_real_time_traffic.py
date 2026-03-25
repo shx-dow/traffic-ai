@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import cv2
+import pytest
 
 
 def check_video_file():
@@ -20,14 +21,16 @@ def check_video_file():
 
     if not video_path.exists():
         if fallback_path.exists():
-            print(f"⚠️  real_time_traffic/output.mp4 not found — using fallback: {fallback_path}")
+            print(
+                f"⚠️  real_time_traffic/output.mp4 not found — using fallback: {fallback_path}"
+            )
             video_path = fallback_path
         else:
             print(f"❌ Video file NOT found: {video_path}")
             return False, None
 
     print(f"✅ Video file found: {video_path}")
-    file_size_gb = video_path.stat().st_size / (1024 ** 3)
+    file_size_gb = video_path.stat().st_size / (1024**3)
     print(f"   File size: {file_size_gb:.2f} GB")
 
     cap = cv2.VideoCapture(str(video_path))
@@ -53,6 +56,14 @@ def check_video_file():
 
     cap.release()
     return True, str(video_path)
+
+
+@pytest.fixture
+def video_path() -> str:
+    is_valid, path = check_video_file()
+    if not is_valid or not path:
+        pytest.skip("No readable traffic video found for integration test")
+    return path
 
 
 def test_detection_on_video(video_path: str):

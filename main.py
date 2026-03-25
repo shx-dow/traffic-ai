@@ -10,7 +10,7 @@ from pathlib import Path
 import cv2
 
 from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
-                    MODEL_PATH)
+                    EMERGENCY_LATCH_SECONDS, MODEL_PATH)
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.runtime import select_corridor_lane
@@ -109,6 +109,8 @@ def main() -> None:
     active_lane = lanes[0]
     frame_counter = 0
     processed_frames = 0
+    emergency_hold_frames = 0
+    last_corridor_lane = active_lane
 
     fps = 30
     frame_delay_ms = int(1000 / fps)
@@ -135,16 +137,38 @@ def main() -> None:
         detection = detector.detect(frame)
 
         lane_counts = counter.count_per_lane(detection["vehicles"])
-        if detection.get("emergency") and signal_ctrl.mode != "EMERGENCY":
+        emergency_seen = bool(detection.get("emergency"))
+        if emergency_seen:
+            emergency_hold_frames = int(max(1, EMERGENCY_LATCH_SECONDS * fps))
+        elif emergency_hold_frames > 0:
+            emergency_hold_frames -= 1
+
+        emergency_active = emergency_seen or emergency_hold_frames > 0
+
+        if emergency_active and signal_ctrl.mode != "EMERGENCY":
             corridor = select_corridor_lane(
                 vehicles=detection["vehicles"],
                 lane_counts=lane_counts,
                 lane_counter=counter,
                 fallback_lane=active_lane,
+                last_corridor_lane=last_corridor_lane,
             )
+            last_corridor_lane = corridor
             signal_ctrl.override_for_emergency(corridor)
 
-        if not detection.get("emergency") and signal_ctrl.mode == "EMERGENCY":
+        if emergency_active and signal_ctrl.mode == "EMERGENCY" and emergency_seen:
+            corridor = select_corridor_lane(
+                vehicles=detection["vehicles"],
+                lane_counts=lane_counts,
+                lane_counter=counter,
+                fallback_lane=last_corridor_lane,
+                last_corridor_lane=last_corridor_lane,
+            )
+            if corridor != last_corridor_lane:
+                last_corridor_lane = corridor
+                signal_ctrl.override_for_emergency(corridor)
+
+        if not emergency_active and signal_ctrl.mode == "EMERGENCY":
             signal_ctrl.resume_adaptive()
             frame_counter = 0
 
@@ -172,7 +196,7 @@ def main() -> None:
             detection_result=detection,
             lane_counts=lane_counts,
             signal_states=signal_states,
-            emergency_active=bool(detection.get("emergency", False)),
+            emergency_active=emergency_active,
         )
         cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
         cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)

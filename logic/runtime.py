@@ -12,6 +12,7 @@ def select_corridor_lane(
     lane_counts: Dict[str, int],
     lane_counter: LaneCounter,
     fallback_lane: str,
+    last_corridor_lane: str | None = None,
 ) -> str:
     ambulance_votes = {lane: 0 for lane in LANES}
 
@@ -27,6 +28,9 @@ def select_corridor_lane(
 
     if any(ambulance_votes.values()):
         return max(ambulance_votes.items(), key=lambda item: item[1])[0]
+
+    if last_corridor_lane in LANES:
+        return last_corridor_lane
 
     if lane_counts:
         return max(lane_counts.items(), key=lambda item: item[1])[0]

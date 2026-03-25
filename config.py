@@ -13,6 +13,9 @@ CONFIG = {
     "display_window": True,
     "save_output": False,
     "output_path": "artifacts/demo_output.mp4",
+    "show_kpi_hud": True,
+    "metrics_log_path": "",
+    "metrics_log_every": 30,
 }
 
 VEHICLE_CLASSES = {

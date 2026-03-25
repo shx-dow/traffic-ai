@@ -19,11 +19,14 @@ class TrafficOverlay:
         lane_counts: Dict[str, int],
         signal_states: Dict[str, str],
         emergency_active: bool,
+        kpi_snapshot: Dict[str, Any] | None = None,
     ) -> Any:
         vehicles = detection_result.get("vehicles", []) if isinstance(detection_result, dict) else []
         self._draw_bounding_boxes(frame, vehicles)
         self._draw_lane_counts(frame, lane_counts)
         self._draw_signal_panel(frame, signal_states)
+        if kpi_snapshot:
+            self._draw_kpi_panel(frame, kpi_snapshot)
         if emergency_active:
             self._draw_emergency_banner(frame)
         return frame
@@ -77,6 +80,35 @@ class TrafficOverlay:
         cv2.rectangle(overlay, (0, 0), (w, 42), (0, 0, 255), -1)
         cv2.addWeighted(overlay, 0.35, frame, 0.65, 0, frame)
         cv2.putText(frame, "EMERGENCY MODE", (w // 2 - 130, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 255, 255), 2)
+
+    def _draw_kpi_panel(self, frame: Any, kpi_snapshot: Dict[str, Any]) -> None:
+        h, _ = frame.shape[:2]
+        x0 = 20
+        y0 = max(95, h - 185)
+        panel_w = 290
+        panel_h = 150
+
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (x0, y0), (x0 + panel_w, y0 + panel_h), (20, 20, 20), -1)
+        cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+
+        wait_s = float(kpi_snapshot.get("avg_wait_seconds", 0.0))
+        throughput = int(kpi_snapshot.get("throughput_score", 0))
+        max_queue = int(kpi_snapshot.get("max_queue", 0))
+        emer_s = float(kpi_snapshot.get("emergency_duration_seconds", 0.0))
+
+        lines = [
+            "Live KPIs",
+            f"Avg wait: {wait_s:.1f}s",
+            f"Throughput: {throughput}",
+            f"Max queue: {max_queue}",
+            f"Emergency time: {emer_s:.1f}s",
+        ]
+        for i, text in enumerate(lines):
+            y = y0 + 24 + (i * 24)
+            color = (255, 255, 255) if i == 0 else (220, 255, 220)
+            scale = 0.62 if i == 0 else 0.58
+            cv2.putText(frame, text, (x0 + 12, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2)
 
 
 def draw_overlay(frame: Any, detections: List[Dict[str, Any]], counts: Dict[str, int], signal_state: str) -> Any:

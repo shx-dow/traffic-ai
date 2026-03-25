@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import signal
 import sys
 import time
@@ -13,6 +14,7 @@ from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
                     EMERGENCY_LATCH_SECONDS, MODEL_PATH)
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
+from logic.live_metrics import LiveMetricsTracker
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
 from ui.overlay import TrafficOverlay
@@ -36,6 +38,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--save-output", action="store_true", default=CONFIG.get("save_output", False))
     p.add_argument("--output-path", default=CONFIG.get("output_path", "artifacts/demo_output.mp4"))
     p.add_argument("--run-pipeline", action="store_true", help="Run core repo validation checks before main loop")
+    p.add_argument("--hide-kpi-hud", action="store_true", help="Disable the live KPI panel overlay")
+    p.add_argument("--metrics-log-path", default=CONFIG.get("metrics_log_path", ""), help="Write live KPI snapshots to JSONL")
+    p.add_argument("--metrics-log-every", type=int, default=int(CONFIG.get("metrics_log_every", 30)), help="Log KPIs every N frames")
     p.add_argument(
         "--disable-gps",
         action="store_true",
@@ -113,8 +118,18 @@ def main() -> None:
     last_corridor_lane = active_lane
 
     fps = 30
+    metrics = LiveMetricsTracker(fps=fps)
     frame_delay_ms = int(1000 / fps)
     display_window = (not args.headless) and bool(CONFIG.get("display_window", True))
+    show_kpi_hud = bool(CONFIG.get("show_kpi_hud", True)) and (not args.hide_kpi_hud)
+
+    metrics_log_path = str(args.metrics_log_path or "").strip()
+    metrics_log_every = max(1, int(args.metrics_log_every))
+    metrics_log_file = None
+    if metrics_log_path:
+        log_path = Path(metrics_log_path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        metrics_log_file = log_path.open("w", encoding="utf-8")
 
     writer = None
     if args.save_output:
@@ -191,12 +206,28 @@ def main() -> None:
             else:
                 frame_counter += 1
 
+        green_lanes = [lane for lane, state in signal_states.items() if state == "GREEN"]
+        metrics.update(lane_counts=lane_counts, green_lanes=green_lanes, mode=signal_ctrl.mode)
+        kpi_snapshot = metrics.snapshot()
+
+        if metrics_log_file is not None and (processed_frames % metrics_log_every == 0):
+            row = {
+                "frame": processed_frames,
+                "mode": signal_ctrl.mode,
+                "emergency_active": emergency_active,
+                "active_lane": active_lane,
+                "lane_counts": lane_counts,
+                **kpi_snapshot,
+            }
+            metrics_log_file.write(json.dumps(row) + "\n")
+
         display = overlay.draw(
             frame.copy(),
             detection_result=detection,
             lane_counts=lane_counts,
             signal_states=signal_states,
             emergency_active=emergency_active,
+            kpi_snapshot=(kpi_snapshot if show_kpi_hud else None),
         )
         cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
         cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
@@ -222,6 +253,9 @@ def main() -> None:
     cap.release()
     if writer is not None:
         writer.release()
+
+    if metrics_log_file is not None:
+        metrics_log_file.close()
 
     if display_window:
         cv2.destroyAllWindows()

@@ -51,6 +51,14 @@ python main.py --mode adaptive --camera-lane north --approach-roi 120,220,1180,7
 
 Use `--ui-mode demo` for judge-facing clean overlays (default), or `--ui-mode debug` for all diagnostics.
 
+Emergency trigger modes:
+
+```bash
+python main.py --mode adaptive --emergency-source manual --video-source assets/sample_video.mp4
+```
+
+Press `e` to toggle emergency ALL_GREEN mode.
+
 Optional top-down fallback (center-split N/S/E/W heuristic):
 
 ```bash
@@ -68,6 +76,8 @@ Or via API source:
 ```bash
 python main.py --mode adaptive --signal-state-source api --signal-state-api-url http://localhost:9000/signal-state --video-source assets/sample_video.mp4
 ```
+
+GPS emergency prioritization now includes ETA and distance in runtime overlays and metrics logs when gps_server is running.
 
 Baseline mode:
 

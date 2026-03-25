@@ -73,12 +73,14 @@ class VehicleDetector:
         vehicles, emergency = self._vehicles_from_coco(raw_result)
         vehicles, emergency = self._merge_ambulance_detections(frame, vehicles, emergency)
 
-        gps_emergency = self._check_gps_emergency()
+        gps_status = self._check_gps_emergency()
+        gps_emergency = bool(gps_status.get("emergency", False))
         out = {
             "vehicles": vehicles,
             "count": len(vehicles),
             "emergency": emergency or gps_emergency,
             "gps_emergency": gps_emergency,
+            "gps_priority": gps_status,
             "raw_result": raw_result,
         }
         return self._attach_fusion(out, video_source_hint)
@@ -179,17 +181,30 @@ class VehicleDetector:
 
     # GPS emergency check
 
-    def _check_gps_emergency(self) -> bool:
+    def _check_gps_emergency(self) -> Dict[str, Any]:
         try:
             import requests
 
             from config import GPS_REQUEST_TIMEOUT_SECONDS, GPS_SERVER_URL
             r = requests.get(f"{GPS_SERVER_URL}/check-ambulance", timeout=GPS_REQUEST_TIMEOUT_SECONDS)
             r.raise_for_status()
-            return bool(r.json().get("emergency", False))
+            payload = r.json()
+            return {
+                "emergency": bool(payload.get("emergency", False)),
+                "vehicle_id": payload.get("vehicle_id"),
+                "distance_km": payload.get("distance_km"),
+                "eta_seconds": payload.get("eta_seconds"),
+                "speed_kmh": payload.get("speed_kmh"),
+            }
         except Exception as e:
             self._logger.debug("GPS emergency check failed: %s", e)
-            return False
+            return {
+                "emergency": False,
+                "vehicle_id": None,
+                "distance_km": None,
+                "eta_seconds": None,
+                "speed_kmh": None,
+            }
 
     # Cross-dataset fusion (optional)
 

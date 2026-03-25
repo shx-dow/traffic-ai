@@ -53,6 +53,8 @@ def test_gps_server():
     response.raise_for_status()
     result = response.json()
     assert result["emergency"] is True
+    assert "eta_seconds" in result
+    assert "distance_km" in result
     print("✅ Emergency detected correctly!")
 
 

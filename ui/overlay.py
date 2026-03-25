@@ -17,8 +17,9 @@ class TrafficOverlay:
         frame: Any,
         detection_result: Dict[str, Any],
         lane_counts: Dict[str, int],
-        signal_states: Dict[str, str],
-        emergency_active: bool,
+        lane_scores: Dict[str, float] | None = None,
+        signal_states: Dict[str, str] | None = None,
+        emergency_active: bool = False,
         kpi_snapshot: Dict[str, Any] | None = None,
         show_directional_counts: bool = True,
         camera_lane: str | None = None,
@@ -29,8 +30,8 @@ class TrafficOverlay:
         vehicles = detection_result.get("vehicles", []) if isinstance(detection_result, dict) else []
         self._draw_bounding_boxes(frame, vehicles, show_labels=(mode != "demo"))
         if mode == "debug":
-            self._draw_lane_counts(frame, lane_counts, show_directional_counts=show_directional_counts, camera_lane=camera_lane)
-        self._draw_signal_panel(frame, signal_states, per_camera_mode=per_camera_mode, camera_lane=camera_lane)
+            self._draw_lane_counts(frame, lane_counts, lane_scores=lane_scores, show_directional_counts=show_directional_counts, camera_lane=camera_lane)
+        self._draw_signal_panel(frame, signal_states or {}, per_camera_mode=per_camera_mode, camera_lane=camera_lane)
         if kpi_snapshot:
             self._draw_kpi_panel(frame, kpi_snapshot)
         if emergency_active:
@@ -55,15 +56,17 @@ class TrafficOverlay:
         frame: Any,
         lane_counts: Dict[str, int],
         *,
+        lane_scores: Dict[str, float] | None,
         show_directional_counts: bool,
         camera_lane: str | None,
     ) -> None:
         if not show_directional_counts:
             lane = str(camera_lane or "north").lower()
             approach_count = int(lane_counts.get(lane, 0))
+            lane_score = float((lane_scores or {}).get(lane, 0.0))
             cv2.putText(
                 frame,
-                f"Approach {lane.title()}: {approach_count}",
+                f"Approach {lane.title()}: {approach_count}  Score: {lane_score:.1f}",
                 (20, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,

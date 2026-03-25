@@ -68,21 +68,39 @@ async def get_ambulances() -> List[Dict]:
 
 
 @app.get("/check-ambulance")
-async def check_ambulance() -> Dict[str, bool]:
+async def check_ambulance() -> Dict[str, object]:
     try:
-        from config import EMERGENCY_DISTANCE_KM
-        from gps_utils import CAMERA_LAT, CAMERA_LON, calculate_distance
+        from config import EMERGENCY_DISTANCE_KM, EMERGENCY_ETA_SECONDS
+        from gps_utils import CAMERA_LAT, CAMERA_LON, calculate_distance, estimate_eta_seconds
 
         active = _active_ambulances()
         emergency = False
+        best = {
+            "vehicle_id": None,
+            "distance_km": None,
+            "eta_seconds": None,
+            "speed_kmh": None,
+        }
+        best_eta = float("inf")
         for vid, data in active.items():
             distance = calculate_distance(CAMERA_LAT, CAMERA_LON, data["lat"], data["lon"])
-            if distance < EMERGENCY_DISTANCE_KM:
-                print(f"EMERGENCY: {vid} at {distance:.2f} km")
+            speed = float(data.get("speed", 0.0))
+            eta = estimate_eta_seconds(distance, speed)
+            should_trigger = (distance < EMERGENCY_DISTANCE_KM) or (eta <= EMERGENCY_ETA_SECONDS)
+            if should_trigger:
+                print(f"EMERGENCY: {vid} at {distance:.2f} km, eta={eta:.1f}s")
                 emergency = True
+                if eta < best_eta:
+                    best_eta = eta
+                    best = {
+                        "vehicle_id": vid,
+                        "distance_km": distance,
+                        "eta_seconds": eta,
+                        "speed_kmh": speed,
+                    }
             else:
-                print(f"Monitoring: {vid} at {distance:.2f} km")
-        return {"emergency": emergency}
+                print(f"Monitoring: {vid} at {distance:.2f} km, eta={eta:.1f}s")
+        return {"emergency": emergency, **best}
     except Exception as e:
         print(f"Error in check_ambulance: {e}")
         return {"emergency": False}

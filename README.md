@@ -61,6 +61,18 @@ Output file:
 
 - `artifacts/metrics.json`
 
+## Multi-intersection demo
+
+Run a mocked 4-intersection corridor pre-clear simulation:
+
+```bash
+python scripts/demo_orchestrator.py --frames 120 --fps 15 --preempt-hops 2 --latch-seconds 3
+```
+
+Output file:
+
+- `artifacts/orchestrator_demo.json`
+
 ## Tests
 
 Run core logic tests:
@@ -73,4 +85,6 @@ python tests/test_simulation.py
 python tests/test_metrics.py
 python tests/test_custom_ambulance.py
 python tests/test_detector_logic.py
+python tests/test_live_metrics.py
+python tests/test_orchestrator.py
 ```

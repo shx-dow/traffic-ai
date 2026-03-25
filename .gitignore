@@ -21,3 +21,6 @@ artifacts/
 # Local test video copies
 assets/sample_video1.mp4
 assets/sample_video_signal.mp4
+
+# Local comparison/reference repo
+comparison/

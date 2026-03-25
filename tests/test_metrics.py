@@ -5,11 +5,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from logic.metrics import compare_metrics, compute_metrics
-from scripts.run_benchmark import build_scenario
 from logic.baseline_signal import BaselineSignalController
+from logic.metrics import compare_metrics, compute_metrics
 from logic.signal import SignalController
 from logic.simulation import run_signal_simulation
+from scripts.run_benchmark import build_scenario
 
 
 def test_compute_metrics_basic_fields():

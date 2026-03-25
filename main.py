@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import signal
 import sys
 import time
+from pathlib import Path
 
 import cv2
 
 from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
                     MODEL_PATH)
-
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.runtime import select_corridor_lane

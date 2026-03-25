@@ -6,8 +6,9 @@ status onto the video frame before display.
 
 from __future__ import annotations
 
-import cv2
 from typing import Any, Dict, List
+
+import cv2
 
 
 class TrafficOverlay:

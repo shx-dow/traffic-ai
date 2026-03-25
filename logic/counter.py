@@ -8,11 +8,15 @@ class LaneCounter:
     Output: {'north': int, 'south': int, 'east': int, 'west': int}
     """
 
-    def __init__(self, frame_width, frame_height):
+    def __init__(self, frame_width, frame_height, *, mode="top_down", camera_lane="north"):
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.mid_x = frame_width / 2.0
         self.mid_y = frame_height / 2.0
+        self.lanes = ("north", "south", "east", "west")
+        self.mode = str(mode).lower()
+        lane = str(camera_lane).lower()
+        self.camera_lane = lane if lane in self.lanes else "north"
 
     def assign_lane(self, bbox):
         """
@@ -21,6 +25,9 @@ class LaneCounter:
 
         Returns: 'north' | 'south' | 'east' | 'west' | 'unknown'
         """
+        if self.mode == "per_camera":
+            return self.camera_lane
+
         x1, y1, x2, y2 = bbox
         cx = (x1 + x2) / 2
         cy = (y1 + y2) / 2
@@ -40,6 +47,10 @@ class LaneCounter:
         Output: {'north': int, 'south': int, 'east': int, 'west': int}
         """
         counts = {'north': 0, 'south': 0, 'east': 0, 'west': 0}
+
+        if self.mode == "per_camera":
+            counts[self.camera_lane] = len(vehicles)
+            return counts
 
         for vehicle in vehicles:
             lane = self.assign_lane(vehicle['bbox'])

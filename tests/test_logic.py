@@ -194,6 +194,35 @@ def test_apply_emergency_override_states():
     print("PASS test_apply_emergency_override_states")
 
 
+def test_per_camera_counter_counts_all_on_configured_lane():
+    counter = LaneCounter(frame_width=1280, frame_height=720, mode="per_camera", camera_lane="west")
+    vehicles = [
+        {'class': 'car', 'confidence': 0.91, 'bbox': [1000, 330, 1080, 390]},
+        {'class': 'car', 'confidence': 0.91, 'bbox': [200, 330, 280, 390]},
+        {'class': 'car', 'confidence': 0.91, 'bbox': [620, 80, 700, 160]},
+    ]
+    counts = counter.count_per_lane(vehicles)
+
+    assert counts['west'] == 3
+    assert counts['north'] == 0
+    assert counts['south'] == 0
+    assert counts['east'] == 0
+    print("PASS test_per_camera_counter_counts_all_on_configured_lane")
+
+
+def test_counter_top_down_mode_preserves_quadrant_assignment():
+    counter = LaneCounter(frame_width=1280, frame_height=720, mode="top_down", camera_lane="south")
+    vehicles = [
+        {'class': 'car', 'confidence': 0.91, 'bbox': [1000, 330, 1080, 390]},
+        {'class': 'car', 'confidence': 0.91, 'bbox': [200, 330, 280, 390]},
+    ]
+    counts = counter.count_per_lane(vehicles)
+
+    assert counts['east'] == 1
+    assert counts['west'] == 1
+    print("PASS test_counter_top_down_mode_preserves_quadrant_assignment")
+
+
 if __name__ == '__main__':
     test_count_per_lane_basic()
     test_assign_lane_directional_split()
@@ -206,3 +235,5 @@ if __name__ == '__main__':
     test_signal_choose_next_lane_prefers_starved_lane()
     test_is_emergency_active_sources()
     test_apply_emergency_override_states()
+    test_per_camera_counter_counts_all_on_configured_lane()
+    test_counter_top_down_mode_preserves_quadrant_assignment()

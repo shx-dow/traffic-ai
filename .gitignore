@@ -5,6 +5,7 @@
 # Python cache
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # YOLO outputs
 runs/

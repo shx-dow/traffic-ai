@@ -30,6 +30,8 @@ def parse_args() -> argparse.Namespace:
                    help="Path to YOLO model weights")
     p.add_argument("--frame-width", type=int, default=CONFIG["frame_width"])
     p.add_argument("--frame-height", type=int, default=CONFIG["frame_height"])
+    p.add_argument("--camera-lane", choices=("north", "south", "east", "west"), default=CONFIG.get("camera_lane", "north"), help="Lane represented by this camera in per-camera mode")
+    p.add_argument("--top-down-view", action="store_true", help="Use center-split top-down lane assignment instead of per-camera mode")
     p.add_argument("--mode", choices=("adaptive", "baseline"), default=DEFAULT_SIGNAL_MODE)
     p.add_argument("--baseline-green-seconds", type=int, default=BASELINE_GREEN_SECONDS)
     p.add_argument("--headless", action="store_true",
@@ -102,7 +104,9 @@ def main() -> None:
     frame_width, frame_height = get_capture_dimensions(cap, args.frame_width, args.frame_height)
 
     detector = VehicleDetector(model_path=args.model_path)
-    counter = LaneCounter(frame_width, frame_height)
+    counter_mode = "top_down" if args.top_down_view else str(CONFIG.get("counter_mode", "per_camera"))
+    show_directional_counts = counter_mode == "top_down"
+    counter = LaneCounter(frame_width, frame_height, mode=counter_mode, camera_lane=args.camera_lane)
     overlay = TrafficOverlay()
 
     if args.mode == "baseline":
@@ -228,9 +232,15 @@ def main() -> None:
             signal_states=signal_states,
             emergency_active=emergency_active,
             kpi_snapshot=(kpi_snapshot if show_kpi_hud else None),
+            show_directional_counts=show_directional_counts,
+            camera_lane=args.camera_lane,
         )
         cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
-        cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+        if show_directional_counts:
+            cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+        else:
+            approach_count = int(lane_counts.get(args.camera_lane, 0))
+            cv2.putText(display, f"Approach {args.camera_lane.title()} Count: {approach_count}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
         if writer is not None:
             writer.write(display)

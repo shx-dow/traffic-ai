@@ -20,10 +20,12 @@ class TrafficOverlay:
         signal_states: Dict[str, str],
         emergency_active: bool,
         kpi_snapshot: Dict[str, Any] | None = None,
+        show_directional_counts: bool = True,
+        camera_lane: str | None = None,
     ) -> Any:
         vehicles = detection_result.get("vehicles", []) if isinstance(detection_result, dict) else []
         self._draw_bounding_boxes(frame, vehicles)
-        self._draw_lane_counts(frame, lane_counts)
+        self._draw_lane_counts(frame, lane_counts, show_directional_counts=show_directional_counts, camera_lane=camera_lane)
         self._draw_signal_panel(frame, signal_states)
         if kpi_snapshot:
             self._draw_kpi_panel(frame, kpi_snapshot)
@@ -43,7 +45,28 @@ class TrafficOverlay:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(frame, label, (x1, max(15, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-    def _draw_lane_counts(self, frame: Any, lane_counts: Dict[str, int]) -> None:
+    def _draw_lane_counts(
+        self,
+        frame: Any,
+        lane_counts: Dict[str, int],
+        *,
+        show_directional_counts: bool,
+        camera_lane: str | None,
+    ) -> None:
+        if not show_directional_counts:
+            lane = str(camera_lane or "north").lower()
+            approach_count = int(lane_counts.get(lane, 0))
+            cv2.putText(
+                frame,
+                f"Approach {lane.title()}: {approach_count}",
+                (20, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 0),
+                2,
+            )
+            return
+
         h, w = frame.shape[:2]
         labels = {
             "north": (20, 30),

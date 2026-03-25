@@ -37,6 +37,18 @@ Adaptive mode:
 python main.py --mode adaptive --video-source assets/sample_video.mp4
 ```
 
+Per-camera mode is the default. Set which approach this camera represents:
+
+```bash
+python main.py --mode adaptive --camera-lane north --video-source assets/sample_video.mp4
+```
+
+Optional top-down fallback (center-split N/S/E/W heuristic):
+
+```bash
+python main.py --mode adaptive --top-down-view --video-source assets/sample_video.mp4
+```
+
 Baseline mode:
 
 ```bash

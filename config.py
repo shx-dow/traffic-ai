@@ -16,6 +16,8 @@ CONFIG = {
     "show_kpi_hud": True,
     "metrics_log_path": "",
     "metrics_log_every": 30,
+    "counter_mode": "per_camera",
+    "camera_lane": "north",
 }
 
 VEHICLE_CLASSES = {

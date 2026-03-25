@@ -61,6 +61,14 @@ Press `e` to toggle emergency ALL_GREEN mode.
 
 Emergency detection supports ambulance and fire-service vehicles (`fire_truck`) via model label normalization.
 
+One-command judge demo runner:
+
+```bash
+python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --with-ambulance-sim --with-orchestrator --with-benchmark
+```
+
+This generates demo artifacts under `artifacts/` including output video, runtime metrics, orchestrator summary, and benchmark metrics.
+
 Optional top-down fallback (center-split N/S/E/W heuristic):
 
 ```bash

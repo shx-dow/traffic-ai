@@ -190,6 +190,7 @@ def main() -> None:
         sensed_signal = signal_sensor.read(frame)
         emergency_seen = bool(detection.get("emergency"))
         gps_emergency = bool(detection.get("gps_emergency"))
+        emergency_source = "none"
 
         key = cv2.waitKey(1) & 0xFF if display_window else 255
         if key == ord("e"):
@@ -208,6 +209,14 @@ def main() -> None:
             "manual": manual_emergency,
         }
         emergency_triggered = emergency_inputs.get(args.emergency_source, False)
+        if manual_emergency:
+            emergency_source = "manual"
+        elif emergency_seen and gps_emergency:
+            emergency_source = "vision+gps"
+        elif emergency_seen:
+            emergency_source = "vision"
+        elif gps_emergency:
+            emergency_source = "gps"
         if emergency_seen:
             emergency_hold_frames = int(max(1, EMERGENCY_LATCH_SECONDS * fps))
         elif emergency_hold_frames > 0:
@@ -236,6 +245,7 @@ def main() -> None:
 
         if signal_ctrl.mode == "EMERGENCY":
             signal_states = signal_ctrl.current_state
+            decision_reason = f"Emergency override ({emergency_source})"
         else:
             signal_states = signal_ctrl.get_current_signal_state(active_lane)
             signal_ctrl.record_cycle(active_lane, lane_counts)
@@ -250,8 +260,15 @@ def main() -> None:
             if should_switch:
                 active_lane = signal_ctrl.choose_next_lane(active_lane, lane_scores)
                 frame_counter = 0
+                decision_reason = f"Switched to {active_lane} (higher congestion score)"
             else:
                 frame_counter += 1
+                balanced = is_balanced(lane_scores.values(), signal_ctrl.CONGESTION_BALANCE_GAP)
+                decision_reason = (
+                    f"Holding {active_lane} (balanced flow)"
+                    if balanced
+                    else f"Holding {active_lane} (min hold/score gap)"
+                )
 
         green_lanes = [lane for lane, state in signal_states.items() if state == "GREEN"]
         metrics.update(lane_counts=lane_counts, green_lanes=green_lanes, mode=signal_ctrl.mode)
@@ -265,6 +282,8 @@ def main() -> None:
                 "active_lane": active_lane,
                 "lane_counts": lane_counts,
                 "lane_scores": lane_scores,
+                "decision_reason": decision_reason,
+                "emergency_source": emergency_source,
                 **kpi_snapshot,
             }
             gps_priority = detection.get("gps_priority")
@@ -310,6 +329,14 @@ def main() -> None:
         if emergency_active:
             cv2.putText(display, "EMERGENCY MODE ACTIVE", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
             y_text += 30
+            cv2.putText(display, f"Emergency source: {emergency_source}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (220, 220, 255), 2)
+            y_text += 28
+
+        signal_summary = build_signal_summary(signal_states)
+        cv2.putText(display, f"Signal output: {signal_summary}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (215, 245, 255), 2)
+        y_text += 28
+        cv2.putText(display, f"Decision: {decision_reason}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (215, 245, 255), 2)
+        y_text += 32
 
         gps_priority = detection.get("gps_priority") if isinstance(detection, dict) else None
         if isinstance(gps_priority, dict) and gps_priority.get("emergency"):

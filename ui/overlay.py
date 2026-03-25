@@ -22,18 +22,22 @@ class TrafficOverlay:
         kpi_snapshot: Dict[str, Any] | None = None,
         show_directional_counts: bool = True,
         camera_lane: str | None = None,
+        ui_mode: str = "debug",
+        per_camera_mode: bool = False,
     ) -> Any:
+        mode = str(ui_mode).lower()
         vehicles = detection_result.get("vehicles", []) if isinstance(detection_result, dict) else []
-        self._draw_bounding_boxes(frame, vehicles)
-        self._draw_lane_counts(frame, lane_counts, show_directional_counts=show_directional_counts, camera_lane=camera_lane)
-        self._draw_signal_panel(frame, signal_states)
+        self._draw_bounding_boxes(frame, vehicles, show_labels=(mode != "demo"))
+        if mode == "debug":
+            self._draw_lane_counts(frame, lane_counts, show_directional_counts=show_directional_counts, camera_lane=camera_lane)
+        self._draw_signal_panel(frame, signal_states, per_camera_mode=per_camera_mode, camera_lane=camera_lane)
         if kpi_snapshot:
             self._draw_kpi_panel(frame, kpi_snapshot)
         if emergency_active:
             self._draw_emergency_banner(frame)
         return frame
 
-    def _draw_bounding_boxes(self, frame: Any, vehicles: List[Dict[str, Any]]) -> None:
+    def _draw_bounding_boxes(self, frame: Any, vehicles: List[Dict[str, Any]], *, show_labels: bool) -> None:
         for v in vehicles:
             bbox = v.get("bbox")
             if not isinstance(bbox, list) or len(bbox) != 4:
@@ -43,7 +47,8 @@ class TrafficOverlay:
             color = (0, 0, 255) if str(v.get("class", "")).lower() == "ambulance" else (0, 255, 0)
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(frame, label, (x1, max(15, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            if show_labels:
+                cv2.putText(frame, label, (x1, max(15, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
     def _draw_lane_counts(
         self,
@@ -79,16 +84,24 @@ class TrafficOverlay:
             text = f"{lane[0].upper()}: {count}"
             cv2.putText(frame, text, pos, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
-    def _draw_signal_panel(self, frame: Any, signal_states: Dict[str, str]) -> None:
+    def _draw_signal_panel(self, frame: Any, signal_states: Dict[str, str], *, per_camera_mode: bool, camera_lane: str | None) -> None:
         h, w = frame.shape[:2]
         x0 = w - 250
         y0 = 50
         panel_w = 220
-        panel_h = 145
+        panel_h = 145 if not per_camera_mode else 82
 
         overlay = frame.copy()
         cv2.rectangle(overlay, (x0, y0), (x0 + panel_w, y0 + panel_h), (30, 30, 30), -1)
         cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+
+        if per_camera_mode:
+            lane = str(camera_lane or "north").lower()
+            state = str(signal_states.get(lane, "RED")).upper()
+            color = (0, 255, 0) if state == "GREEN" else (0, 0, 255)
+            cv2.putText(frame, "Signal State", (x0 + 10, y0 + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 2)
+            cv2.putText(frame, f"{lane}: {state}", (x0 + 10, y0 + 58), cv2.FONT_HERSHEY_SIMPLEX, 0.65, color, 2)
+            return
 
         lanes = ["north", "south", "east", "west"]
         for i, lane in enumerate(lanes):
@@ -137,6 +150,11 @@ class TrafficOverlay:
         x1, y1, x2, y2 = roi
         cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 200, 0), 2)
         cv2.putText(frame, label, (x1, max(16, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 200, 0), 2)
+
+    def draw_counting_roi(self, frame: Any, roi: tuple[int, int, int, int], label: str, color: tuple[int, int, int]) -> None:
+        x1, y1, x2, y2 = roi
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(frame, label, (x1, max(16, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
 
 
 def draw_overlay(frame: Any, detections: List[Dict[str, Any]], counts: Dict[str, int], signal_state: str) -> Any:

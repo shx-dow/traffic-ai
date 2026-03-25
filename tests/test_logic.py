@@ -223,6 +223,45 @@ def test_counter_top_down_mode_preserves_quadrant_assignment():
     print("PASS test_counter_top_down_mode_preserves_quadrant_assignment")
 
 
+def test_per_camera_counter_uses_approach_roi_filtering():
+    counter = LaneCounter(
+        frame_width=1280,
+        frame_height=720,
+        mode="per_camera",
+        camera_lane="north",
+        approach_roi=(0, 0, 300, 300),
+    )
+    vehicles = [
+        {'class': 'car', 'confidence': 0.91, 'bbox': [50, 50, 120, 120]},
+        {'class': 'car', 'confidence': 0.91, 'bbox': [900, 500, 980, 620]},
+    ]
+
+    counts = counter.count_per_lane(vehicles)
+    assert counts['north'] == 1
+    assert counter.last_approach_count == 1
+    print("PASS test_per_camera_counter_uses_approach_roi_filtering")
+
+
+def test_per_camera_counter_reports_queue_with_queue_roi():
+    counter = LaneCounter(
+        frame_width=1280,
+        frame_height=720,
+        mode="per_camera",
+        camera_lane="north",
+        approach_roi=(0, 0, 1200, 720),
+        queue_roi=(0, 0, 300, 300),
+    )
+    vehicles = [
+        {'class': 'car', 'confidence': 0.91, 'bbox': [50, 50, 120, 120]},
+        {'class': 'car', 'confidence': 0.91, 'bbox': [500, 500, 580, 620]},
+    ]
+
+    counts = counter.count_per_lane(vehicles)
+    assert counts['north'] == 2
+    assert counter.last_queue_length == 1
+    print("PASS test_per_camera_counter_reports_queue_with_queue_roi")
+
+
 if __name__ == '__main__':
     test_count_per_lane_basic()
     test_assign_lane_directional_split()
@@ -237,3 +276,5 @@ if __name__ == '__main__':
     test_apply_emergency_override_states()
     test_per_camera_counter_counts_all_on_configured_lane()
     test_counter_top_down_mode_preserves_quadrant_assignment()
+    test_per_camera_counter_uses_approach_roi_filtering()
+    test_per_camera_counter_reports_queue_with_queue_roi()

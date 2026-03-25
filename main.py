@@ -15,6 +15,7 @@ from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.live_metrics import LiveMetricsTracker
+from logic.roi import parse_rect_roi
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
 from logic.signal_state import SignalStateSensor, parse_roi_arg
@@ -49,6 +50,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--signal-state-roi", default=CONFIG.get("signal_state_roi", ""), help="Traffic light ROI as x1,y1,x2,y2 for video signal sensing")
     p.add_argument("--signal-state-api-timeout", type=float, default=float(CONFIG.get("signal_state_api_timeout", 0.4)), help="Signal state API timeout seconds")
     p.add_argument("--show-signal-roi", action="store_true", help="Draw the traffic-light ROI box when using video signal sensing")
+    p.add_argument("--approach-roi", default=CONFIG.get("approach_roi", ""), help="Per-camera approach ROI x1,y1,x2,y2")
+    p.add_argument("--queue-roi", default=CONFIG.get("queue_roi", ""), help="Per-camera stop-line queue ROI x1,y1,x2,y2")
+    p.add_argument("--show-count-roi", action="store_true", help="Draw counting ROIs for approach and queue zones")
+    p.add_argument("--ui-mode", choices=("demo", "debug"), default="demo", help="Overlay verbosity mode")
     p.add_argument(
         "--disable-gps",
         action="store_true",
@@ -111,8 +116,18 @@ def main() -> None:
 
     detector = VehicleDetector(model_path=args.model_path)
     counter_mode = "top_down" if args.top_down_view else str(CONFIG.get("counter_mode", "per_camera"))
+    per_camera_mode = counter_mode == "per_camera"
     show_directional_counts = counter_mode == "top_down"
-    counter = LaneCounter(frame_width, frame_height, mode=counter_mode, camera_lane=args.camera_lane)
+    approach_roi = parse_rect_roi(args.approach_roi)
+    queue_roi = parse_rect_roi(args.queue_roi)
+    counter = LaneCounter(
+        frame_width,
+        frame_height,
+        mode=counter_mode,
+        camera_lane=args.camera_lane,
+        approach_roi=approach_roi,
+        queue_roi=queue_roi,
+    )
     overlay = TrafficOverlay()
     signal_sensor = SignalStateSensor(
         source=args.signal_state_source,
@@ -253,15 +268,17 @@ def main() -> None:
             kpi_snapshot=(kpi_snapshot if show_kpi_hud else None),
             show_directional_counts=show_directional_counts,
             camera_lane=args.camera_lane,
+            ui_mode=args.ui_mode,
+            per_camera_mode=per_camera_mode,
         )
         y_text = 30
-        cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         y_text += 34
-        if show_directional_counts:
+        if args.ui_mode == "debug" and show_directional_counts:
             cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
         else:
             approach_count = int(lane_counts.get(args.camera_lane, 0))
-            cv2.putText(display, f"Approach {args.camera_lane.title()} Count: {approach_count}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+            cv2.putText(display, f"Approach {args.camera_lane.title()} Count: {approach_count}  Queue: {counter.last_queue_length}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
         y_text += 36
         if sensed_signal is not None:
             cv2.putText(display, f"Observed signal: {sensed_signal.state} ({sensed_signal.source}, {sensed_signal.confidence:.2f})", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 255, 200), 2)
@@ -271,6 +288,12 @@ def main() -> None:
         if args.show_signal_roi and args.signal_state_source == "video":
             roi = signal_sensor.get_effective_roi(frame)
             overlay.draw_signal_roi(display, roi)
+
+        if args.show_count_roi and counter_mode == "per_camera" and args.ui_mode == "debug":
+            if counter.approach_roi is not None:
+                overlay.draw_counting_roi(display, counter.approach_roi, "Approach ROI", (80, 220, 255))
+            if counter.queue_roi is not None:
+                overlay.draw_counting_roi(display, counter.queue_roi, "Queue ROI", (255, 100, 100))
 
         if writer is not None:
             writer.write(display)

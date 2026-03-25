@@ -43,6 +43,14 @@ Per-camera mode is the default. Set which approach this camera represents:
 python main.py --mode adaptive --camera-lane north --video-source assets/sample_video.mp4
 ```
 
+Per-camera ROI calibration (recommended for better queue estimation):
+
+```bash
+python main.py --mode adaptive --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --show-count-roi --video-source assets/sample_video.mp4
+```
+
+Use `--ui-mode demo` for judge-facing clean overlays (default), or `--ui-mode debug` for all diagnostics.
+
 Optional top-down fallback (center-split N/S/E/W heuristic):
 
 ```bash

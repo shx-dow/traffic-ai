@@ -22,6 +22,8 @@ CONFIG = {
     "signal_state_api_url": "",
     "signal_state_roi": "",
     "signal_state_api_timeout": 0.4,
+    "approach_roi": "",
+    "queue_roi": "",
 }
 
 VEHICLE_CLASSES = {

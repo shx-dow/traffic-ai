@@ -18,6 +18,10 @@ CONFIG = {
     "metrics_log_every": 30,
     "counter_mode": "per_camera",
     "camera_lane": "north",
+    "signal_state_source": "none",
+    "signal_state_api_url": "",
+    "signal_state_roi": "",
+    "signal_state_api_timeout": 0.4,
 }
 
 VEHICLE_CLASSES = {

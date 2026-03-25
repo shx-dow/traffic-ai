@@ -17,6 +17,7 @@ from logic.counter import LaneCounter
 from logic.live_metrics import LiveMetricsTracker
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
+from logic.signal_state import SignalStateSensor, parse_roi_arg
 from ui.overlay import TrafficOverlay
 from utils.helpers import run_repo_pipeline
 from vision.detector import VehicleDetector
@@ -43,6 +44,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--hide-kpi-hud", action="store_true", help="Disable the live KPI panel overlay")
     p.add_argument("--metrics-log-path", default=CONFIG.get("metrics_log_path", ""), help="Write live KPI snapshots to JSONL")
     p.add_argument("--metrics-log-every", type=int, default=int(CONFIG.get("metrics_log_every", 30)), help="Log KPIs every N frames")
+    p.add_argument("--signal-state-source", choices=("none", "video", "api"), default=CONFIG.get("signal_state_source", "none"), help="External signal state source for credibility overlay")
+    p.add_argument("--signal-state-api-url", default=CONFIG.get("signal_state_api_url", ""), help="API endpoint returning {state, confidence}")
+    p.add_argument("--signal-state-roi", default=CONFIG.get("signal_state_roi", ""), help="Traffic light ROI as x1,y1,x2,y2 for video signal sensing")
+    p.add_argument("--signal-state-api-timeout", type=float, default=float(CONFIG.get("signal_state_api_timeout", 0.4)), help="Signal state API timeout seconds")
+    p.add_argument("--show-signal-roi", action="store_true", help="Draw the traffic-light ROI box when using video signal sensing")
     p.add_argument(
         "--disable-gps",
         action="store_true",
@@ -108,6 +114,12 @@ def main() -> None:
     show_directional_counts = counter_mode == "top_down"
     counter = LaneCounter(frame_width, frame_height, mode=counter_mode, camera_lane=args.camera_lane)
     overlay = TrafficOverlay()
+    signal_sensor = SignalStateSensor(
+        source=args.signal_state_source,
+        api_url=args.signal_state_api_url,
+        roi=parse_roi_arg(args.signal_state_roi),
+        timeout_seconds=args.signal_state_api_timeout,
+    )
 
     if args.mode == "baseline":
         signal_ctrl = BaselineSignalController(green_seconds=args.baseline_green_seconds)
@@ -156,6 +168,7 @@ def main() -> None:
         detection = detector.detect(frame)
 
         lane_counts = counter.count_per_lane(detection["vehicles"])
+        sensed_signal = signal_sensor.read(frame)
         emergency_seen = bool(detection.get("emergency"))
         if emergency_seen:
             emergency_hold_frames = int(max(1, EMERGENCY_LATCH_SECONDS * fps))
@@ -223,6 +236,12 @@ def main() -> None:
                 "lane_counts": lane_counts,
                 **kpi_snapshot,
             }
+            if sensed_signal is not None:
+                row["sensed_signal"] = {
+                    "state": sensed_signal.state,
+                    "source": sensed_signal.source,
+                    "confidence": sensed_signal.confidence,
+                }
             metrics_log_file.write(json.dumps(row) + "\n")
 
         display = overlay.draw(
@@ -235,12 +254,23 @@ def main() -> None:
             show_directional_counts=show_directional_counts,
             camera_lane=args.camera_lane,
         )
-        cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+        y_text = 30
+        cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        y_text += 34
         if show_directional_counts:
-            cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+            cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
         else:
             approach_count = int(lane_counts.get(args.camera_lane, 0))
-            cv2.putText(display, f"Approach {args.camera_lane.title()} Count: {approach_count}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+            cv2.putText(display, f"Approach {args.camera_lane.title()} Count: {approach_count}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+        y_text += 36
+        if sensed_signal is not None:
+            cv2.putText(display, f"Observed signal: {sensed_signal.state} ({sensed_signal.source}, {sensed_signal.confidence:.2f})", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 255, 200), 2)
+        elif args.signal_state_source != "none":
+            cv2.putText(display, f"Observed signal: UNKNOWN ({args.signal_state_source})", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 220, 255), 2)
+
+        if args.show_signal_roi and args.signal_state_source == "video":
+            roi = signal_sensor.get_effective_roi(frame)
+            overlay.draw_signal_roi(display, roi)
 
         if writer is not None:
             writer.write(display)

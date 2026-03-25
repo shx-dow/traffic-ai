@@ -133,6 +133,11 @@ class TrafficOverlay:
             scale = 0.62 if i == 0 else 0.58
             cv2.putText(frame, text, (x0 + 12, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2)
 
+    def draw_signal_roi(self, frame: Any, roi: tuple[int, int, int, int], label: str = "Signal ROI") -> None:
+        x1, y1, x2, y2 = roi
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 200, 0), 2)
+        cv2.putText(frame, label, (x1, max(16, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 200, 0), 2)
+
 
 def draw_overlay(frame: Any, detections: List[Dict[str, Any]], counts: Dict[str, int], signal_state: str) -> Any:
     """Backward-compatible wrapper around TrafficOverlay.

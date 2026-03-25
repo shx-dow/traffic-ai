@@ -49,6 +49,18 @@ Optional top-down fallback (center-split N/S/E/W heuristic):
 python main.py --mode adaptive --top-down-view --video-source assets/sample_video.mp4
 ```
 
+Optional observed traffic-light sensing (credibility overlay):
+
+```bash
+python main.py --mode adaptive --signal-state-source video --signal-state-roi 0,0,220,160 --video-source assets/sample_video.mp4
+```
+
+Or via API source:
+
+```bash
+python main.py --mode adaptive --signal-state-source api --signal-state-api-url http://localhost:9000/signal-state --video-source assets/sample_video.mp4
+```
+
 Baseline mode:
 
 ```bash

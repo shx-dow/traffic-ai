@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Dict, List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -26,14 +26,6 @@ class AmbulanceLocation(BaseModel):
     lat: float
     lon: float
     speed: float
-
-
-class AmbulanceData(BaseModel):
-    vehicle_id: str
-    lat: float
-    lon: float
-    speed: float
-    timestamp: datetime
 
 
 def _active_ambulances() -> Dict[str, Dict]:

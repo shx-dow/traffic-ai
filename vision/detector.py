@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -44,6 +45,14 @@ class VehicleDetector:
         self._world_model: Any = None
         self._ambulance_custom: Optional[YOLO] = None
         self._ambulance_aux: Optional[YOLO] = None
+        self._gps_cache: Dict[str, Any] = {
+            "emergency": False,
+            "vehicle_id": None,
+            "distance_km": None,
+            "eta_seconds": None,
+            "speed_kmh": None,
+        }
+        self._gps_last_poll_ts = 0.0
 
         if self._ambulance_mode in ("custom", "aux_weights"):
             custom_path = Path(AMBULANCE_CUSTOM_MODEL_PATH)
@@ -217,26 +226,28 @@ class VehicleDetector:
         try:
             import requests
 
-            from config import GPS_REQUEST_TIMEOUT_SECONDS, GPS_SERVER_URL
+            from config import (GPS_POLL_INTERVAL_SECONDS,
+                                GPS_REQUEST_TIMEOUT_SECONDS, GPS_SERVER_URL)
+
+            now = time.monotonic()
+            if now - self._gps_last_poll_ts < GPS_POLL_INTERVAL_SECONDS:
+                return self._gps_cache
+
             r = requests.get(f"{GPS_SERVER_URL}/check-ambulance", timeout=GPS_REQUEST_TIMEOUT_SECONDS)
             r.raise_for_status()
             payload = r.json()
-            return {
+            self._gps_cache = {
                 "emergency": bool(payload.get("emergency", False)),
                 "vehicle_id": payload.get("vehicle_id"),
                 "distance_km": payload.get("distance_km"),
                 "eta_seconds": payload.get("eta_seconds"),
                 "speed_kmh": payload.get("speed_kmh"),
             }
+            self._gps_last_poll_ts = now
+            return self._gps_cache
         except Exception as e:
             self._logger.debug("GPS emergency check failed: %s", e)
-            return {
-                "emergency": False,
-                "vehicle_id": None,
-                "distance_km": None,
-                "eta_seconds": None,
-                "speed_kmh": None,
-            }
+            return self._gps_cache
 
     # Cross-dataset fusion (optional)
 

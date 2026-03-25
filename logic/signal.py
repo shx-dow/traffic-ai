@@ -74,8 +74,7 @@ class SignalController:
                 self._lane_wait_cycles[lane] = 0
 
     def should_switch_lane(self, active_lane, lane_counts, frame_counter, fps):
-        counts = self._normalize_numeric(lane_counts)
-        scores = self.calculate_congestion_scores(counts)
+        scores = self._normalize_numeric(lane_counts)
         green_times = self.calculate_green_times(scores)
         min_hold_frames = int(self.MIN_HOLD_SECONDS * fps)
         active_frames_target = int(green_times.get(active_lane, self.MIN_GREEN) * fps)
@@ -105,14 +104,13 @@ class SignalController:
         return False
 
     def choose_next_lane(self, active_lane, lane_counts):
-        counts = self._normalize_numeric(lane_counts)
-        scores = self.calculate_congestion_scores(counts)
+        scores = self._normalize_numeric(lane_counts)
 
         starved = [
             lane
             for lane in self.lanes
             if lane != active_lane
-            and counts[lane] > 0
+            and scores[lane] > 0
             and self._lane_wait_cycles[lane] >= self.MAX_WAIT_CYCLES
         ]
         if starved:

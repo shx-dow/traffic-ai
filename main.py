@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -23,6 +25,9 @@ from logic.traffic_loop import build_signal_summary, is_balanced
 from ui.overlay import TrafficOverlay
 from utils.helpers import run_repo_pipeline
 from vision.detector import VehicleDetector
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,9 +73,15 @@ def open_capture(source) -> cv2.VideoCapture:
     try:
         idx = int(source)
         cap = cv2.VideoCapture(idx)
-    except Exception:
+    except (TypeError, ValueError):
         cap = cv2.VideoCapture(str(source))
     return cap
+
+
+def compute_lane_scores(signal_ctrl, lane_counts: dict[str, int]) -> dict[str, float]:
+    if hasattr(signal_ctrl, "calculate_congestion_scores"):
+        return signal_ctrl.calculate_congestion_scores(lane_counts)
+    return {lane: float(count) for lane, count in lane_counts.items()}
 
 
 def get_capture_dimensions(cap: cv2.VideoCapture, default_width: int, default_height: int) -> tuple[int, int]:
@@ -88,11 +99,12 @@ class GracefulExit:
         self.exit = False
 
     def __call__(self, signum, frame):
-        print(f"Received signal {signum}, exiting gracefully...")
+        LOGGER.info("Received signal %s, exiting gracefully", signum)
         self.exit = True
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     args = parse_args()
 
     gps_proc = None
@@ -106,12 +118,12 @@ def main() -> None:
     signal.signal(signal.SIGINT, ge)
     try:
         signal.signal(signal.SIGTERM, ge)
-    except Exception:
+    except (AttributeError, ValueError):
         pass
 
     cap = open_capture(args.video_source)
     if not cap.isOpened():
-        print("Failed to open video source", args.video_source)
+        LOGGER.error("Failed to open video source %s", args.video_source)
         sys.exit(1)
 
     frame_width, frame_height = get_capture_dimensions(cap, args.frame_width, args.frame_height)
@@ -172,21 +184,21 @@ def main() -> None:
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(str(out_path), fourcc, float(fps), (frame_width, frame_height))
         if not writer.isOpened():
-            print(f"Warning: failed to open video writer at {out_path}")
+            LOGGER.warning("Failed to open video writer at %s", out_path)
             writer = None
 
-    print(f"Starting main loop in {args.mode} mode. Press 'q' in window to quit.")
+    LOGGER.info("Starting main loop in %s mode. Press 'q' in window to quit.", args.mode)
 
     while not ge.exit and cap.isOpened():
         ret, frame = cap.read()
         if not ret:
-            print("End of stream or cannot read frame")
+            LOGGER.info("End of stream or cannot read frame")
             break
 
         detection = detector.detect(frame)
 
         lane_counts = counter.count_per_lane(detection["vehicles"])
-        lane_scores = signal_ctrl.calculate_congestion_scores(lane_counts)
+        lane_scores = compute_lane_scores(signal_ctrl, lane_counts)
         sensed_signal = signal_sensor.read(frame)
         emergency_seen = bool(detection.get("emergency"))
         gps_emergency = bool(detection.get("gps_emergency"))
@@ -195,11 +207,11 @@ def main() -> None:
         key = cv2.waitKey(1) & 0xFF if display_window else 255
         if key == ord("e"):
             manual_emergency = not manual_emergency
-            print(f"Manual emergency toggled: {manual_emergency}")
+            LOGGER.info("Manual emergency toggled: %s", manual_emergency)
             if manual_emergency:
                 emergency_hold_frames = int(max(1, EMERGENCY_LATCH_SECONDS * fps))
         elif key == ord("q"):
-            print("'q' pressed — exiting")
+            LOGGER.info("'q' pressed — exiting")
             break
 
         emergency_inputs = {
@@ -223,11 +235,23 @@ def main() -> None:
             emergency_hold_frames -= 1
 
         emergency_active = emergency_triggered or emergency_hold_frames > 0
+        force_all_green = manual_emergency
 
         if emergency_active and signal_ctrl.mode != "EMERGENCY":
-            signal_ctrl.override_all_green()
+            if force_all_green:
+                signal_ctrl.override_all_green()
+            else:
+                corridor = select_corridor_lane(
+                    vehicles=detection["vehicles"],
+                    lane_counts=lane_counts,
+                    lane_counter=counter,
+                    fallback_lane=active_lane,
+                    last_corridor_lane=last_corridor_lane,
+                )
+                last_corridor_lane = corridor
+                signal_ctrl.override_for_emergency(corridor)
 
-        if emergency_active and signal_ctrl.mode == "EMERGENCY" and emergency_seen:
+        if emergency_active and (not force_all_green) and signal_ctrl.mode == "EMERGENCY" and emergency_seen:
             corridor = select_corridor_lane(
                 vehicles=detection["vehicles"],
                 lane_counts=lane_counts,
@@ -263,7 +287,8 @@ def main() -> None:
                 decision_reason = f"Switched to {active_lane} (higher congestion score)"
             else:
                 frame_counter += 1
-                balanced = is_balanced(lane_scores.values(), signal_ctrl.CONGESTION_BALANCE_GAP)
+                balance_gap = float(getattr(signal_ctrl, "CONGESTION_BALANCE_GAP", 2.5))
+                balanced = is_balanced(lane_scores.values(), balance_gap)
                 decision_reason = (
                     f"Holding {active_lane} (balanced flow)"
                     if balanced
@@ -362,7 +387,7 @@ def main() -> None:
 
         processed_frames += 1
         if args.max_frames > 0 and processed_frames >= args.max_frames:
-            print(f"Reached max frames: {args.max_frames}")
+            LOGGER.info("Reached max frames: %s", args.max_frames)
             break
 
         if display_window:
@@ -382,11 +407,11 @@ def main() -> None:
         cv2.destroyAllWindows()
 
     if gps_proc is not None:
-        print("Stopping gps_server.py...")
+        LOGGER.info("Stopping gps_server.py...")
         gps_proc.terminate()
         try:
             gps_proc.wait(timeout=5)
-        except Exception:
+        except subprocess.TimeoutExpired:
             gps_proc.kill()
 
 

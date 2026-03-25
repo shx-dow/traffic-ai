@@ -45,7 +45,8 @@ class TrafficOverlay:
                 continue
             x1, y1, x2, y2 = [int(n) for n in bbox]
             label = f"{v.get('class', 'obj')} {float(v.get('confidence', 0.0)):.2f}"
-            color = (0, 0, 255) if str(v.get("class", "")).lower() == "ambulance" else (0, 255, 0)
+            cls = str(v.get("class", "")).lower()
+            color = (0, 0, 255) if cls in {"ambulance", "fire_truck"} else (0, 255, 0)
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             if show_labels:

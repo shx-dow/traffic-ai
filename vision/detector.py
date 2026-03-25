@@ -9,7 +9,7 @@ from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
 VEHICLE_CLASSES = frozenset({"car", "truck", "bus", "motorcycle", "bicycle"})
-EMERGENCY_CLASS_NAMES = frozenset({"ambulance"})
+EMERGENCY_CLASS_NAMES = frozenset({"ambulance", "fire_truck"})
 TRACKED_CLASSES = VEHICLE_CLASSES | EMERGENCY_CLASS_NAMES
 CONFIDENCE_THRESHOLD = 0.4
 
@@ -92,8 +92,10 @@ class VehicleDetector:
         if not raw_result.boxes:
             return vehicles, False
         for box in raw_result.boxes:
-            cls_name = str(raw_result.names[int(box.cls[0].item())]).lower()
-            if cls_name not in TRACKED_CLASSES:
+            raw_name = str(raw_result.names[int(box.cls[0].item())]).lower()
+            normalized_emergency = self._normalize_emergency_label(raw_name)
+            cls_name = normalized_emergency if normalized_emergency else raw_name
+            if cls_name not in TRACKED_CLASSES and cls_name not in VEHICLE_CLASSES:
                 continue
             xyxy = box.xyxy[0].cpu().numpy()
             vehicles.append({
@@ -133,39 +135,69 @@ class VehicleDetector:
             self._logger.warning("Ambulance model prediction failed: %s", e)
             return vehicles, False
 
-        ambulance_boxes = [
-            {"class": "ambulance", "confidence": float(box.conf[0].item()), "bbox": [float(v) for v in box.xyxy[0].cpu().numpy()]}
-            for box in (result.boxes or [])
-            if "ambulance" in str(result.names[int(box.cls[0].item())]).lower()
-        ]
-        if not ambulance_boxes:
+        emergency_boxes: List[Detection] = []
+        for box in (result.boxes or []):
+            cls_label = str(result.names[int(box.cls[0].item())]).lower()
+            normalized = self._normalize_emergency_label(cls_label)
+            if normalized is None:
+                continue
+            emergency_boxes.append(
+                {
+                    "class": normalized,
+                    "confidence": float(box.conf[0].item()),
+                    "bbox": [float(v) for v in box.xyxy[0].cpu().numpy()],
+                }
+            )
+
+        if not emergency_boxes:
             return vehicles, False
 
-        # Drop existing detections that overlap with confirmed ambulances
-        filtered = [v for v in vehicles if not any(self._iou(v["bbox"], a["bbox"]) > 0.5 for a in ambulance_boxes)]
-        return filtered + ambulance_boxes, True
+        filtered = [v for v in vehicles if not any(self._iou(v["bbox"], e["bbox"]) > 0.5 for e in emergency_boxes)]
+        return filtered + emergency_boxes, True
 
     def _run_yolo_world(self, frame: np.ndarray, vehicles: List[Detection]) -> Tuple[List[Detection], bool]:
         try:
             from ultralytics import YOLOWorld
             if self._world_model is None:
                 self._world_model = YOLOWorld(self._world_weights)
-                self._world_model.set_classes(["ambulance"])
+                self._world_model.set_classes(["ambulance", "fire truck", "fire engine"])
             result = self._world_model.predict(source=frame, conf=self._ambulance_world_conf, verbose=False)[0]
         except Exception:
             self._logger.debug("YOLOWorld unavailable or failed")
             return vehicles, False
 
-        ambulance_boxes = [
-            {"class": "ambulance", "confidence": float(box.conf[0].item()), "bbox": [float(v) for v in box.xyxy[0].cpu().numpy()]}
-            for box in (result.boxes or [])
-            if "ambulance" in str(result.names[int(box.cls[0].item())]).lower()
-        ]
-        if not ambulance_boxes:
+        emergency_boxes: List[Detection] = []
+        for box in (result.boxes or []):
+            cls_label = str(result.names[int(box.cls[0].item())]).lower()
+            normalized = self._normalize_emergency_label(cls_label)
+            if normalized is None:
+                continue
+            emergency_boxes.append(
+                {
+                    "class": normalized,
+                    "confidence": float(box.conf[0].item()),
+                    "bbox": [float(v) for v in box.xyxy[0].cpu().numpy()],
+                }
+            )
+
+        if not emergency_boxes:
             return vehicles, False
 
-        filtered = [v for v in vehicles if not any(self._iou(v["bbox"], a["bbox"]) > 0.5 for a in ambulance_boxes)]
-        return filtered + ambulance_boxes, True
+        filtered = [v for v in vehicles if not any(self._iou(v["bbox"], e["bbox"]) > 0.5 for e in emergency_boxes)]
+        return filtered + emergency_boxes, True
+
+    @staticmethod
+    def _normalize_emergency_label(label: str) -> str | None:
+        value = str(label).lower().replace("_", " ").replace("-", " ").strip()
+        compact = value.replace(" ", "")
+
+        if "ambulance" in value:
+            return "ambulance"
+        if "fire" in value and ("truck" in value or "engine" in value or compact in {"firetruck", "fireengine"}):
+            return "fire_truck"
+        if compact in {"firetruck", "fireengine"}:
+            return "fire_truck"
+        return None
 
     # Geometry
 

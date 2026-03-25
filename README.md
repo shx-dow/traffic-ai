@@ -59,6 +59,8 @@ python main.py --mode adaptive --emergency-source manual --video-source assets/s
 
 Press `e` to toggle emergency ALL_GREEN mode.
 
+Emergency detection supports ambulance and fire-service vehicles (`fire_truck`) via model label normalization.
+
 Optional top-down fallback (center-split N/S/E/W heuristic):
 
 ```bash

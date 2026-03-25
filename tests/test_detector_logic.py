@@ -64,7 +64,16 @@ def test_merge_can_set_emergency_when_aux_finds_ambulance():
     assert any(v["class"] == "ambulance" for v in vehicles)
 
 
+def test_normalize_emergency_label_supports_fire_services():
+    detector = _make_detector_for_merge("custom")
+
+    assert detector._normalize_emergency_label("fire truck") == "fire_truck"
+    assert detector._normalize_emergency_label("fire_engine") == "fire_truck"
+    assert detector._normalize_emergency_label("ambulance") == "ambulance"
+
+
 if __name__ == "__main__":
     test_merge_preserves_existing_emergency_flag_on_model_failure()
     test_merge_can_set_emergency_when_aux_finds_ambulance()
+    test_normalize_emergency_label_supports_fire_services()
     print("PASS test_detector_logic")

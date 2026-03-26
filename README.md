@@ -193,6 +193,19 @@ python -m sumo_demo.run_pre_system --out artifacts/sumo_pre_system.csv
 python -m sumo_demo.run_post_system --out artifacts/sumo_post_system.csv
 ```
 
+To view the simulation in the GUI, add `--gui`:
+
+```bash
+python -m sumo_demo.run_pre_system --gui --out artifacts/sumo_pre_system.csv
+python -m sumo_demo.run_post_system --gui --out artifacts/sumo_post_system.csv
+```
+
+If the simulation still moves too fast, increase delay:
+
+```bash
+python -m sumo_demo.run_pre_system --gui --delay 200 --out artifacts/sumo_pre_system.csv
+```
+
 This keeps SUMO as an optional validation/demo layer. The live prototype remains the OpenCV/YOLO runtime.
 
 ## Judge Demo Script (60-90 seconds)

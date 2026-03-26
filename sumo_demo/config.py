@@ -8,8 +8,8 @@ class SumoDemoConfig:
     net_file: str = "sumo_demo/scenarios/real/single_intersection.net.xml"
     route_file: str = "sumo_demo/scenarios/real/single_intersection.rou.xml"
     sumocfg_file: str = "sumo_demo/scenarios/real/single_intersection.sumocfg"
-    baseline_tls_id: str = "J0"
-    adaptive_tls_id: str = "J0"
+    baseline_tls_id: str = ""
+    adaptive_tls_id: str = ""
     emergency_vehicle_id: str = "ambulance_0"
     emergency_start_step: int = 200
     emergency_end_step: int = 520

@@ -47,6 +47,8 @@ def _write_csv(history: List[SumoStepResult], out_path: str) -> None:
 
 def _lane_counts_from_sumo(traci, tls_id: str) -> Dict[str, int]:
     counts = {"north": 0, "south": 0, "east": 0, "west": 0}
+    if not tls_id:
+        return counts
     try:
         lanes = traci.trafficlight.getControlledLanes(tls_id)
     except Exception:
@@ -65,6 +67,16 @@ def _lane_counts_from_sumo(traci, tls_id: str) -> Dict[str, int]:
     return counts
 
 
+def _detect_tls_id(traci, preferred: str = "") -> str | None:
+    try:
+        ids = list(traci.trafficlight.getIDList())
+    except Exception:
+        return None
+    if preferred and preferred in ids:
+        return preferred
+    return ids[0] if ids else None
+
+
 def run_real_pre_system(cfg: SumoDemoConfig, *, out_csv: str | None = None) -> List[SumoStepResult]:
     traci = _import_runtime()
     if traci is None:
@@ -81,10 +93,11 @@ def run_real_pre_system(cfg: SumoDemoConfig, *, out_csv: str | None = None) -> L
     controller = SumoBaselineController(green_seconds=20)
     history: List[SumoStepResult] = []
     try:
+        tls_id = _detect_tls_id(traci, cfg.baseline_tls_id)
         step = 0
         while traci.simulation.getMinExpectedNumber() > 0 and step < cfg.sim_steps:
             traci.simulationStep()
-            lane_counts = _lane_counts_from_sumo(traci, cfg.baseline_tls_id)
+            lane_counts = _lane_counts_from_sumo(traci, tls_id or cfg.baseline_tls_id)
             result = controller.step(lane_counts)
             result.step = step
             history.append(result)
@@ -114,13 +127,14 @@ def run_real_post_system(cfg: SumoDemoConfig, *, out_csv: str | None = None) -> 
     controller = SumoAdaptiveController()
     history: List[SumoStepResult] = []
     try:
+        tls_id = _detect_tls_id(traci, cfg.adaptive_tls_id)
         step = 0
         emergency_start = cfg.emergency_start_step
         emergency_end = cfg.emergency_end_step
         while traci.simulation.getMinExpectedNumber() > 0 and step < cfg.sim_steps:
             traci.simulationStep()
             emergency = emergency_start <= step < emergency_end
-            lane_counts = _lane_counts_from_sumo(traci, cfg.adaptive_tls_id)
+            lane_counts = _lane_counts_from_sumo(traci, tls_id or cfg.adaptive_tls_id)
             result = controller.step(lane_counts)
             result.step = step
             result.emergency_active = emergency

@@ -163,7 +163,29 @@ python tests/test_custom_ambulance.py
 python tests/test_detector_logic.py
 python tests/test_live_metrics.py
 python tests/test_orchestrator.py
+python tests/test_sumo_demo.py
 ```
+
+## SUMO Demo (optional)
+
+Prerequisites:
+- `sumo`, `sumo-gui`, `netedit`
+- Python bindings: `traci`, `sumolib`
+
+Install Python bindings:
+
+```bash
+python -m pip install sumolib traci
+```
+
+Run the offline pre/post demo summaries:
+
+```bash
+python -m sumo_demo.run_pre_system --out artifacts/sumo_pre_system.csv
+python -m sumo_demo.run_post_system --out artifacts/sumo_post_system.csv
+```
+
+This keeps SUMO as an optional validation/demo layer. The live prototype remains the OpenCV/YOLO runtime.
 
 ## Judge Demo Script (60-90 seconds)
 

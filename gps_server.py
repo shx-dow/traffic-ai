@@ -63,7 +63,8 @@ async def get_ambulances() -> List[Dict]:
 async def check_ambulance() -> Dict[str, object]:
     try:
         from config import EMERGENCY_DISTANCE_KM, EMERGENCY_ETA_SECONDS
-        from gps_utils import CAMERA_LAT, CAMERA_LON, calculate_distance, estimate_eta_seconds
+        from gps_utils import (CAMERA_LAT, CAMERA_LON, calculate_distance,
+                               estimate_eta_seconds)
 
         active = _active_ambulances()
         emergency = False

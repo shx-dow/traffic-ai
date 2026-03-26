@@ -5,8 +5,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from logic.signal import SignalController
 from logic.emergency import apply_emergency_override
+from logic.signal import SignalController
 
 
 def test_congestion_scores_include_waiting_factor():

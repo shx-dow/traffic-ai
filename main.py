@@ -26,7 +26,6 @@ from ui.overlay import TrafficOverlay
 from utils.helpers import run_repo_pipeline
 from vision.detector import VehicleDetector
 
-
 LOGGER = logging.getLogger(__name__)
 
 

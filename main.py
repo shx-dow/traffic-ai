@@ -17,6 +17,7 @@ from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.live_metrics import LiveMetricsTracker
+from logic.orchestrator import CorridorOrchestrator
 from logic.roi import parse_rect_roi
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
@@ -60,6 +61,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--show-count-roi", action="store_true", help="Draw counting ROIs for approach and queue zones")
     p.add_argument("--ui-mode", choices=("demo", "debug"), default="demo", help="Overlay verbosity mode")
     p.add_argument("--emergency-source", choices=("vision", "gps", "fusion", "manual"), default="fusion", help="Emergency trigger mode")
+    p.add_argument("--enable-orchestrator", action="store_true", help="Enable route-aware corridor pre-clear planning")
+    p.add_argument("--orchestrator-route", default="int_a,int_b,int_c,int_d", help="Comma separated route node ids")
+    p.add_argument("--orchestrator-node-id", default="int_a", help="Current node id for this runtime instance")
+    p.add_argument("--orchestrator-preempt-hops", type=int, default=2, help="How many downstream intersections to pre-clear")
     p.add_argument(
         "--disable-gps",
         action="store_true",
@@ -161,6 +166,20 @@ def main() -> None:
     emergency_hold_frames = 0
     last_corridor_lane = active_lane
     manual_emergency = False
+    emergency_progress_frames = 0
+
+    route_nodes = [node.strip() for node in str(args.orchestrator_route).split(",") if node.strip()]
+    orchestrator_enabled = bool(args.enable_orchestrator and route_nodes)
+    if args.orchestrator_node_id not in route_nodes and route_nodes:
+        route_nodes.insert(0, args.orchestrator_node_id)
+    orchestrator = None
+    if orchestrator_enabled:
+        orchestrator = CorridorOrchestrator(
+            route_nodes,
+            preempt_hops=max(0, int(args.orchestrator_preempt_hops)),
+            latch_frames=max(1, int(EMERGENCY_LATCH_SECONDS * 30)),
+        )
+    orchestrator_emergency_nodes = 0
 
     fps = 30
     metrics = LiveMetricsTracker(fps=fps)
@@ -235,29 +254,44 @@ def main() -> None:
 
         emergency_active = emergency_triggered or emergency_hold_frames > 0
         force_all_green = manual_emergency
+        if emergency_active and not force_all_green:
+            emergency_progress_frames += 1
+        else:
+            emergency_progress_frames = 0
+
+        corridor = last_corridor_lane
+        if emergency_active and not force_all_green:
+            corridor = select_corridor_lane(
+                vehicles=detection["vehicles"],
+                lane_counts=lane_counts,
+                lane_counter=counter,
+                fallback_lane=active_lane,
+                last_corridor_lane=last_corridor_lane,
+            )
+
+        if orchestrator is not None:
+            if emergency_active and not force_all_green:
+                position_index = min(len(route_nodes) - 1, emergency_progress_frames // max(1, fps * 2))
+                plan = orchestrator.update(
+                    route=route_nodes,
+                    position_index=position_index,
+                    ambulance_lane=corridor,
+                )
+            else:
+                plan = orchestrator.update(route=None, position_index=None, ambulance_lane=None)
+            node_plan = plan.get(args.orchestrator_node_id)
+            if node_plan is not None and node_plan.mode == "EMERGENCY" and node_plan.corridor_lane:
+                corridor = node_plan.corridor_lane
+            orchestrator_emergency_nodes = sum(1 for p in plan.values() if p.mode == "EMERGENCY")
 
         if emergency_active and signal_ctrl.mode != "EMERGENCY":
             if force_all_green:
                 signal_ctrl.override_all_green()
             else:
-                corridor = select_corridor_lane(
-                    vehicles=detection["vehicles"],
-                    lane_counts=lane_counts,
-                    lane_counter=counter,
-                    fallback_lane=active_lane,
-                    last_corridor_lane=last_corridor_lane,
-                )
                 last_corridor_lane = corridor
                 signal_ctrl.override_for_emergency(corridor)
 
         if emergency_active and (not force_all_green) and signal_ctrl.mode == "EMERGENCY" and emergency_seen:
-            corridor = select_corridor_lane(
-                vehicles=detection["vehicles"],
-                lane_counts=lane_counts,
-                lane_counter=counter,
-                fallback_lane=last_corridor_lane,
-                last_corridor_lane=last_corridor_lane,
-            )
             if corridor != last_corridor_lane:
                 last_corridor_lane = corridor
                 signal_ctrl.override_for_emergency(corridor)
@@ -308,6 +342,7 @@ def main() -> None:
                 "lane_scores": lane_scores,
                 "decision_reason": decision_reason,
                 "emergency_source": emergency_source,
+                "orchestrator_emergency_nodes": orchestrator_emergency_nodes,
                 **kpi_snapshot,
             }
             gps_priority = detection.get("gps_priority")
@@ -361,6 +396,9 @@ def main() -> None:
         y_text += 28
         cv2.putText(display, f"Decision: {decision_reason}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (215, 245, 255), 2)
         y_text += 32
+        if orchestrator is not None:
+            cv2.putText(display, f"Route pre-clear nodes: {orchestrator_emergency_nodes}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (220, 245, 220), 2)
+            y_text += 28
 
         gps_priority = detection.get("gps_priority") if isinstance(detection, dict) else None
         if isinstance(gps_priority, dict) and gps_priority.get("emergency"):

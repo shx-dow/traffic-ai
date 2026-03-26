@@ -91,6 +91,17 @@ def main() -> int:
             args.signal_state_source,
         ]
 
+        if args.with_orchestrator:
+            cmd.extend([
+                "--enable-orchestrator",
+                "--orchestrator-route",
+                "int_a,int_b,int_c,int_d",
+                "--orchestrator-node-id",
+                "int_a",
+                "--orchestrator-preempt-hops",
+                "2",
+            ])
+
         if args.approach_roi:
             cmd.extend(["--approach-roi", args.approach_roi])
         if args.queue_roi:

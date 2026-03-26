@@ -87,6 +87,12 @@ Optional top-down fallback (center-split N/S/E/W heuristic):
 python main.py --mode adaptive --top-down-view --video-source assets/sample_video.mp4
 ```
 
+Enable route-aware corridor pre-clear in runtime (single-node view of multi-intersection plan):
+
+```bash
+python main.py --mode adaptive --enable-orchestrator --orchestrator-route int_a,int_b,int_c,int_d --orchestrator-node-id int_a --orchestrator-preempt-hops 2 --video-source assets/sample_video.mp4
+```
+
 Optional observed traffic-light sensing (credibility overlay):
 
 ```bash

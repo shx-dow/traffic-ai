@@ -30,6 +30,47 @@ def check_gps_emergency(ambulance_data: List[Dict]) -> bool:
     return False
 
 
+def estimate_eta_seconds(distance_km: float, speed_kmh: float, *, min_speed_kmh: float = 5.0) -> float:
+    d = max(0.0, float(distance_km))
+    s = max(float(min_speed_kmh), float(speed_kmh))
+    return (d / s) * 3600.0
+
+
+def compute_emergency_priority(ambulance_data: List[Dict]) -> Dict[str, float | bool | str | None]:
+    best = {
+        "emergency": False,
+        "vehicle_id": None,
+        "distance_km": None,
+        "eta_seconds": None,
+        "speed_kmh": None,
+    }
+
+    best_eta = float("inf")
+    for ambulance in ambulance_data:
+        try:
+            lat = float(ambulance["lat"])
+            lon = float(ambulance["lon"])
+            speed = float(ambulance.get("speed", 0.0))
+            vid = str(ambulance.get("vehicle_id", "unknown"))
+
+            distance = calculate_distance(CAMERA_LAT, CAMERA_LON, lat, lon)
+            eta = estimate_eta_seconds(distance, speed)
+
+            if distance <= EMERGENCY_DISTANCE_KM and eta < best_eta:
+                best_eta = eta
+                best = {
+                    "emergency": True,
+                    "vehicle_id": vid,
+                    "distance_km": distance,
+                    "eta_seconds": eta,
+                    "speed_kmh": speed,
+                }
+        except (KeyError, ValueError, TypeError):
+            continue
+
+    return best
+
+
 def get_camera_location() -> Dict[str, float]:
     return {"lat": CAMERA_LAT, "lon": CAMERA_LON}
 

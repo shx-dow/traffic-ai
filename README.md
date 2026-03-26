@@ -37,6 +37,58 @@ Adaptive mode:
 python main.py --mode adaptive --video-source assets/sample_video.mp4
 ```
 
+Per-camera mode is the default. Set which approach this camera represents:
+
+```bash
+python main.py --mode adaptive --camera-lane north --video-source assets/sample_video.mp4
+```
+
+Per-camera ROI calibration (recommended for better queue estimation):
+
+```bash
+python main.py --mode adaptive --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --show-count-roi --video-source assets/sample_video.mp4
+```
+
+Use `--ui-mode demo` for judge-facing clean overlays (default), or `--ui-mode debug` for all diagnostics.
+
+Emergency trigger modes:
+
+```bash
+python main.py --mode adaptive --emergency-source manual --video-source assets/sample_video.mp4
+```
+
+Press `e` to toggle emergency ALL_GREEN mode.
+
+Emergency detection supports ambulance and fire-service vehicles (`fire_truck`) via model label normalization.
+
+One-command judge demo runner:
+
+```bash
+python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --with-ambulance-sim --with-orchestrator --with-benchmark
+```
+
+This generates demo artifacts under `artifacts/` including output video, runtime metrics, orchestrator summary, and benchmark metrics.
+
+Optional top-down fallback (center-split N/S/E/W heuristic):
+
+```bash
+python main.py --mode adaptive --top-down-view --video-source assets/sample_video.mp4
+```
+
+Optional observed traffic-light sensing (credibility overlay):
+
+```bash
+python main.py --mode adaptive --signal-state-source video --signal-state-roi 0,0,220,160 --video-source assets/sample_video.mp4
+```
+
+Or via API source:
+
+```bash
+python main.py --mode adaptive --signal-state-source api --signal-state-api-url http://localhost:9000/signal-state --video-source assets/sample_video.mp4
+```
+
+GPS emergency prioritization now includes ETA and distance in runtime overlays and metrics logs when gps_server is running.
+
 Baseline mode:
 
 ```bash
@@ -61,6 +113,18 @@ Output file:
 
 - `artifacts/metrics.json`
 
+## Multi-intersection demo
+
+Run a mocked 4-intersection corridor pre-clear simulation:
+
+```bash
+python scripts/demo_orchestrator.py --frames 120 --fps 15 --preempt-hops 2 --latch-seconds 3
+```
+
+Output file:
+
+- `artifacts/orchestrator_demo.json`
+
 ## Tests
 
 Run core logic tests:
@@ -73,4 +137,6 @@ python tests/test_simulation.py
 python tests/test_metrics.py
 python tests/test_custom_ambulance.py
 python tests/test_detector_logic.py
+python tests/test_live_metrics.py
+python tests/test_orchestrator.py
 ```

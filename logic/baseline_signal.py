@@ -4,7 +4,7 @@ from __future__ import annotations
 class BaselineSignalController:
     def __init__(self, green_seconds: int = 20):
         self.green_seconds = max(5, int(green_seconds))
-        self.mode = "ADAPTIVE"
+        self.mode = "BASELINE"
         self.lanes = ("north", "south", "east", "west")
         self.current_state = {lane: "RED" for lane in self.lanes}
 

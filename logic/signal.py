@@ -13,6 +13,8 @@ class SignalController:
         self.MAX_GREEN = 60
         self.MIN_HOLD_SECONDS = 5
         self.SWITCH_GAP = 3
+        self.CONGESTION_WAIT_WEIGHT = 2.0
+        self.CONGESTION_BALANCE_GAP = 2.5
         self.MAX_WAIT_CYCLES = 4
         self.mode = 'ADAPTIVE'
         self.lanes = ('north', 'south', 'east', 'west')
@@ -49,6 +51,17 @@ class SignalController:
     def _normalize_counts(self, lane_counts):
         return {lane: int(lane_counts.get(lane, 0)) for lane in self.lanes}
 
+    def _normalize_numeric(self, lane_counts):
+        return {lane: float(lane_counts.get(lane, 0.0)) for lane in self.lanes}
+
+    def calculate_congestion_scores(self, lane_counts):
+        counts = self._normalize_numeric(lane_counts)
+        scores = {}
+        for lane in self.lanes:
+            waiting_factor = self._lane_wait_cycles.get(lane, 0) * self.CONGESTION_WAIT_WEIGHT
+            scores[lane] = float(counts[lane]) + float(waiting_factor)
+        return scores
+
     def record_cycle(self, active_lane, lane_counts):
         counts = self._normalize_counts(lane_counts)
         for lane in self.lanes:
@@ -61,11 +74,11 @@ class SignalController:
                 self._lane_wait_cycles[lane] = 0
 
     def should_switch_lane(self, active_lane, lane_counts, frame_counter, fps):
-        counts = self._normalize_counts(lane_counts)
-        green_times = self.calculate_green_times(counts)
+        scores = self._normalize_numeric(lane_counts)
+        green_times = self.calculate_green_times(scores)
         min_hold_frames = int(self.MIN_HOLD_SECONDS * fps)
         active_frames_target = int(green_times.get(active_lane, self.MIN_GREEN) * fps)
-        active_count = counts.get(active_lane, 0)
+        active_score = scores.get(active_lane, 0.0)
 
         if frame_counter < min_hold_frames:
             return False
@@ -74,15 +87,15 @@ class SignalController:
             return True
 
         best_other_lane = None
-        best_other_count = -1
-        for lane, count in counts.items():
+        best_other_score = -1.0
+        for lane, score in scores.items():
             if lane == active_lane:
                 continue
-            if count > best_other_count:
+            if score > best_other_score:
                 best_other_lane = lane
-                best_other_count = count
+                best_other_score = score
 
-        if best_other_lane and best_other_count >= active_count + self.SWITCH_GAP:
+        if best_other_lane and best_other_score >= active_score + self.CONGESTION_BALANCE_GAP:
             return True
 
         if frame_counter >= int(self.MAX_GREEN * fps):
@@ -91,20 +104,20 @@ class SignalController:
         return False
 
     def choose_next_lane(self, active_lane, lane_counts):
-        counts = self._normalize_counts(lane_counts)
+        scores = self._normalize_numeric(lane_counts)
 
         starved = [
             lane
             for lane in self.lanes
             if lane != active_lane
-            and counts[lane] > 0
+            and scores[lane] > 0
             and self._lane_wait_cycles[lane] >= self.MAX_WAIT_CYCLES
         ]
         if starved:
-            return max(starved, key=lambda lane: (self._lane_wait_cycles[lane], counts[lane]))
+            return max(starved, key=lambda lane: (self._lane_wait_cycles[lane], scores[lane]))
 
-        best_lane = max(self.lanes, key=lambda lane: counts[lane])
-        if counts[best_lane] > 0:
+        best_lane = max(self.lanes, key=lambda lane: scores[lane])
+        if scores[best_lane] > 0:
             return best_lane
 
         active_index = self.lanes.index(active_lane)
@@ -129,6 +142,12 @@ class SignalController:
         """
         self.mode = 'EMERGENCY'
         return self.get_current_signal_state(corridor_lane)
+
+    def override_all_green(self):
+        self.mode = 'EMERGENCY'
+        state = {lane: 'GREEN' for lane in self.lanes}
+        self.current_state = state
+        return state
 
     def resume_adaptive(self):
         self.mode = 'ADAPTIVE'

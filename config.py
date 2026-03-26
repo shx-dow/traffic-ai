@@ -13,6 +13,17 @@ CONFIG = {
     "display_window": True,
     "save_output": False,
     "output_path": "artifacts/demo_output.mp4",
+    "show_kpi_hud": True,
+    "metrics_log_path": "",
+    "metrics_log_every": 30,
+    "counter_mode": "per_camera",
+    "camera_lane": "north",
+    "signal_state_source": "none",
+    "signal_state_api_url": "",
+    "signal_state_roi": "",
+    "signal_state_api_timeout": 0.4,
+    "approach_roi": "",
+    "queue_roi": "",
 }
 
 VEHICLE_CLASSES = {
@@ -60,4 +71,7 @@ CAMERA_LAT = 26.9124  # Jaipur, India
 CAMERA_LON = 75.7873
 GPS_SERVER_URL = "http://localhost:8000"
 EMERGENCY_DISTANCE_KM = 0.5
+EMERGENCY_ETA_SECONDS = 45
 GPS_REQUEST_TIMEOUT_SECONDS = 0.5
+GPS_POLL_INTERVAL_SECONDS = 0.5
+EMERGENCY_LATCH_SECONDS = 3

@@ -57,8 +57,24 @@ def test_select_corridor_lane_uses_fallback_when_no_data():
     assert lane == "west", f"Expected fallback lane west, got {lane}"
 
 
+def test_select_corridor_lane_prefers_last_corridor_when_ambulance_missing():
+    counter = LaneCounter(frame_width=1280, frame_height=720)
+    lane_counts = {"north": 1, "south": 7, "east": 2, "west": 3}
+
+    lane = select_corridor_lane(
+        vehicles=[{"class": "car", "confidence": 0.9, "bbox": [620, 560, 700, 640]}],
+        lane_counts=lane_counts,
+        lane_counter=counter,
+        fallback_lane="north",
+        last_corridor_lane="east",
+    )
+
+    assert lane == "east", f"Expected sticky last corridor east, got {lane}"
+
+
 if __name__ == "__main__":
     test_select_corridor_lane_prefers_ambulance_lane()
     test_select_corridor_lane_falls_back_to_density()
     test_select_corridor_lane_uses_fallback_when_no_data()
+    test_select_corridor_lane_prefers_last_corridor_when_ambulance_missing()
     print("PASS test_runtime")

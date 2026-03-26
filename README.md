@@ -69,6 +69,18 @@ python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera
 
 This generates demo artifacts under `artifacts/` including output video, runtime metrics, orchestrator summary, and benchmark metrics.
 
+Add `--with-report` to auto-generate a final concise report for judges:
+
+```bash
+python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --with-ambulance-sim --with-orchestrator --with-benchmark --with-report
+```
+
+Or generate report directly from existing artifacts:
+
+```bash
+python scripts/generate_demo_report.py --metrics-log artifacts/live_metrics_demo.jsonl --benchmark artifacts/metrics.json --orchestrator artifacts/orchestrator_demo.json --output-video artifacts/demo_output.mp4 --out artifacts/demo_report.md
+```
+
 Optional top-down fallback (center-split N/S/E/W heuristic):
 
 ```bash

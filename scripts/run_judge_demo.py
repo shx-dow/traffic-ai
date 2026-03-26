@@ -40,8 +40,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--with-ambulance-sim", action="store_true")
     parser.add_argument("--with-orchestrator", action="store_true")
     parser.add_argument("--with-benchmark", action="store_true")
+    parser.add_argument("--with-report", action="store_true")
     parser.add_argument("--metrics-log-path", default="artifacts/live_metrics_demo.jsonl")
     parser.add_argument("--output-path", default="artifacts/demo_output.mp4")
+    parser.add_argument("--report-path", default="artifacts/demo_report.md")
     return parser.parse_args()
 
 
@@ -114,6 +116,27 @@ def main() -> int:
             print("Running baseline vs adaptive benchmark...")
             subprocess.run([python, "scripts/run_benchmark.py", "--frames", "1800", "--out", "artifacts/metrics.json"], cwd=root, check=False)
 
+        if args.with_report:
+            print("Generating demo report...")
+            subprocess.run(
+                [
+                    python,
+                    "scripts/generate_demo_report.py",
+                    "--metrics-log",
+                    args.metrics_log_path,
+                    "--benchmark",
+                    "artifacts/metrics.json",
+                    "--orchestrator",
+                    "artifacts/orchestrator_demo.json",
+                    "--output-video",
+                    args.output_path,
+                    "--out",
+                    args.report_path,
+                ],
+                cwd=root,
+                check=False,
+            )
+
         print("Demo complete. Artifacts:")
         print(f"  - {args.output_path}")
         print(f"  - {args.metrics_log_path}")
@@ -121,6 +144,8 @@ def main() -> int:
             print("  - artifacts/orchestrator_demo.json")
         if args.with_benchmark:
             print("  - artifacts/metrics.json")
+        if args.with_report:
+            print(f"  - {args.report_path}")
         return 0
     finally:
         if sim_proc is not None:

@@ -127,3 +127,27 @@ def parse_roi_arg(roi_value: str) -> Optional[Tuple[int, int, int, int]]:
         raise ValueError("ROI must be in format x1,y1,x2,y2")
     x1, y1, x2, y2 = [int(p) for p in parts]
     return x1, y1, x2, y2
+
+
+def resolve_signal_reading(
+    sensed: SignalStateReading | None,
+    *,
+    requested_source: str,
+    fallback_mode: str,
+    signal_states: Dict[str, str],
+    camera_lane: str,
+) -> SignalStateReading | None:
+    if sensed is not None:
+        return sensed
+
+    if str(requested_source).lower() == "none":
+        return None
+
+    if str(fallback_mode).lower() == "controller":
+        lane = str(camera_lane or "north").lower()
+        state = str(signal_states.get(lane, "RED")).upper()
+        if state not in {"RED", "YELLOW", "GREEN"}:
+            state = "RED"
+        return SignalStateReading(state=state, source="controller_fallback", confidence=1.0)
+
+    return None

@@ -21,7 +21,8 @@ from logic.orchestrator import CorridorOrchestrator
 from logic.roi import parse_rect_roi
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
-from logic.signal_state import SignalStateSensor, parse_roi_arg
+from logic.signal_state import (SignalStateSensor, parse_roi_arg,
+                                resolve_signal_reading)
 from logic.traffic_loop import build_signal_summary, is_balanced
 from ui.overlay import TrafficOverlay
 from utils.helpers import run_repo_pipeline
@@ -55,6 +56,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--signal-state-api-url", default=CONFIG.get("signal_state_api_url", ""), help="API endpoint returning {state, confidence}")
     p.add_argument("--signal-state-roi", default=CONFIG.get("signal_state_roi", ""), help="Traffic light ROI as x1,y1,x2,y2 for video signal sensing")
     p.add_argument("--signal-state-api-timeout", type=float, default=float(CONFIG.get("signal_state_api_timeout", 0.4)), help="Signal state API timeout seconds")
+    p.add_argument("--signal-state-fallback", choices=("none", "controller"), default="controller", help="Fallback source when signal sensing is unavailable")
     p.add_argument("--show-signal-roi", action="store_true", help="Draw the traffic-light ROI box when using video signal sensing")
     p.add_argument("--approach-roi", default=CONFIG.get("approach_roi", ""), help="Per-camera approach ROI x1,y1,x2,y2")
     p.add_argument("--queue-roi", default=CONFIG.get("queue_roi", ""), help="Per-camera stop-line queue ROI x1,y1,x2,y2")
@@ -217,7 +219,7 @@ def main() -> None:
 
         lane_counts = counter.count_per_lane(detection["vehicles"])
         lane_scores = compute_lane_scores(signal_ctrl, lane_counts)
-        sensed_signal = signal_sensor.read(frame)
+        sensed_signal_raw = signal_sensor.read(frame)
         emergency_seen = bool(detection.get("emergency"))
         gps_emergency = bool(detection.get("gps_emergency"))
         emergency_source = "none"
@@ -328,6 +330,14 @@ def main() -> None:
                     else f"Holding {active_lane} (min hold/score gap)"
                 )
 
+        sensed_signal = resolve_signal_reading(
+            sensed_signal_raw,
+            requested_source=args.signal_state_source,
+            fallback_mode=args.signal_state_fallback,
+            signal_states=signal_states,
+            camera_lane=args.camera_lane,
+        )
+
         green_lanes = [lane for lane, state in signal_states.items() if state == "GREEN"]
         metrics.update(lane_counts=lane_counts, green_lanes=green_lanes, mode=signal_ctrl.mode)
         kpi_snapshot = metrics.snapshot()
@@ -348,8 +358,14 @@ def main() -> None:
             gps_priority = detection.get("gps_priority")
             if isinstance(gps_priority, dict):
                 row["gps_priority"] = gps_priority
-            if sensed_signal is not None:
+            if sensed_signal_raw is not None:
                 row["sensed_signal"] = {
+                    "state": sensed_signal_raw.state,
+                    "source": sensed_signal_raw.source,
+                    "confidence": sensed_signal_raw.confidence,
+                }
+            if sensed_signal is not None and sensed_signal.source == "controller_fallback":
+                row["sensed_signal_fallback"] = {
                     "state": sensed_signal.state,
                     "source": sensed_signal.source,
                     "confidence": sensed_signal.confidence,
@@ -380,7 +396,10 @@ def main() -> None:
             cv2.putText(display, f"Approach {args.camera_lane.title()} Count: {approach_count}  Score: {score:.1f}  Queue: {counter.last_queue_length}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (255, 255, 0), 2)
         y_text += 36
         if sensed_signal is not None:
-            cv2.putText(display, f"Observed signal: {sensed_signal.state} ({sensed_signal.source}, {sensed_signal.confidence:.2f})", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 255, 200), 2)
+            if sensed_signal.source == "controller_fallback":
+                cv2.putText(display, f"Observed signal: {sensed_signal.state} (fallback: controller)", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (180, 230, 255), 2)
+            else:
+                cv2.putText(display, f"Observed signal: {sensed_signal.state} ({sensed_signal.source}, {sensed_signal.confidence:.2f})", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 255, 200), 2)
         elif args.signal_state_source != "none":
             cv2.putText(display, f"Observed signal: UNKNOWN ({args.signal_state_source})", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 220, 255), 2)
         y_text += 32

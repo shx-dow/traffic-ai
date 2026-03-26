@@ -99,6 +99,12 @@ Optional observed traffic-light sensing (credibility overlay):
 python main.py --mode adaptive --signal-state-source video --signal-state-roi 0,0,220,160 --video-source assets/sample_video.mp4
 ```
 
+If sensing is unavailable, fallback to controller signal state (default):
+
+```bash
+python main.py --mode adaptive --signal-state-source video --signal-state-fallback controller --video-source assets/sample_video.mp4
+```
+
 Or via API source:
 
 ```bash

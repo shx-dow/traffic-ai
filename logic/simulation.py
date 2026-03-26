@@ -13,6 +13,7 @@ def _normalize_counts(lane_counts: Dict[str, int] | None) -> Dict[str, int]:
 def run_signal_simulation(controller: Any, frame_events: List[Dict[str, Any]], fps: int = 30) -> List[Dict[str, Any]]:
     active_lane = "north"
     frame_counter = 0
+    last_corridor_lane = active_lane
     history: List[Dict[str, Any]] = []
 
     for event in frame_events:
@@ -22,8 +23,9 @@ def run_signal_simulation(controller: Any, frame_events: List[Dict[str, Any]], f
 
         if emergency and controller.mode != "EMERGENCY":
             if corridor_lane is None:
-                corridor_lane = max(lane_counts.items(), key=lambda item: item[1])[0]
+                corridor_lane = last_corridor_lane or active_lane
             controller.override_for_emergency(corridor_lane)
+            last_corridor_lane = corridor_lane
 
         if not emergency and controller.mode == "EMERGENCY":
             controller.resume_adaptive()

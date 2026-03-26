@@ -84,16 +84,6 @@ def open_capture(source) -> cv2.VideoCapture:
     return cap
 
 
-def compute_lane_scores(signal_ctrl, lane_counts: dict[str, int]) -> dict[str, float]:
-    return compute_lane_scores_for_runtime(
-        signal_ctrl,
-        lane_counts,
-        per_camera_mode=False,
-        camera_lane=None,
-        queue_length=0,
-    )
-
-
 def compute_lane_scores_for_runtime(
     signal_ctrl,
     lane_counts: dict[str, int],
@@ -233,7 +223,6 @@ def main() -> None:
 
     fps = 30
     metrics = LiveMetricsTracker(fps=fps)
-    frame_delay_ms = int(1000 / fps)
     display_window = (not args.headless) and bool(CONFIG.get("display_window", True))
     show_kpi_hud = bool(CONFIG.get("show_kpi_hud", True)) and (not args.hide_kpi_hud)
 

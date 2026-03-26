@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sumo_demo.config import SumoDemoConfig
-from sumo_demo.runner import run_post_system, run_pre_system
+from sumo_demo.traci_runner import run_post_system, run_pre_system
 
 
 def test_sumo_pre_and_post_system_runs_generate_history():

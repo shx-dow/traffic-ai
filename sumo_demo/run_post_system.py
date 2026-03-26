@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from .config import SumoDemoConfig
-from .runner import run_post_system, write_summary
+from .traci_runner import run_real_sumo_post_system
 
 
 def parse_args() -> argparse.Namespace:
@@ -15,8 +15,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     cfg = SumoDemoConfig()
-    history = run_post_system(cfg)
-    write_summary(history, args.out)
+    run_real_sumo_post_system(cfg, out_csv=args.out)
     print(f"Wrote post-system summary to {args.out}")
     return 0
 

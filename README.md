@@ -2,15 +2,15 @@
 
 ## Scope
 
-This repository implements the core logic for a single-intersection traffic controller:
+This repository implements a judge-ready single-intersection traffic controller with a prototype multi-node pre-clear demo:
 
 - real-time vehicle detection
 - lane-wise counting
 - adaptive signal policy
-- emergency override behavior
+- emergency priority corridor behavior
 - baseline vs adaptive benchmark with metrics output
 
-UI and multi-intersection orchestration are separate workstreams.
+The live runtime is single-node. Multi-intersection orchestration is presented as a prototype pre-clear artifact, not a full live route-graph deployment.
 
 ## Core modules
 
@@ -57,7 +57,7 @@ Emergency trigger modes:
 python main.py --mode adaptive --emergency-source manual --video-source assets/sample_video.mp4
 ```
 
-Press `e` to toggle emergency ALL_GREEN mode.
+Press `e` to toggle a manual corridor override on the current approach.
 
 Emergency detection supports ambulance and fire-service vehicles (`fire_truck`) via model label normalization.
 
@@ -87,7 +87,7 @@ Optional top-down fallback (center-split N/S/E/W heuristic):
 python main.py --mode adaptive --top-down-view --video-source assets/sample_video.mp4
 ```
 
-Enable route-aware corridor pre-clear in runtime (single-node view of multi-intersection plan):
+Enable prototype route-aware corridor pre-clear in runtime (single-node view of a multi-intersection plan):
 
 ```bash
 python main.py --mode adaptive --enable-orchestrator --orchestrator-route int_a,int_b,int_c,int_d --orchestrator-node-id int_a --orchestrator-preempt-hops 2 --video-source assets/sample_video.mp4
@@ -111,7 +111,7 @@ Or via API source:
 python main.py --mode adaptive --signal-state-source api --signal-state-api-url http://localhost:9000/signal-state --video-source assets/sample_video.mp4
 ```
 
-GPS emergency prioritization now includes ETA and distance in runtime overlays and metrics logs when gps_server is running.
+GPS emergency prioritization now includes ETA, distance, corridor lane, and lane-source labeling in runtime overlays and metrics logs when gps_server is running.
 
 Baseline mode:
 
@@ -139,7 +139,7 @@ Output file:
 
 ## Multi-intersection demo
 
-Run a mocked 4-intersection corridor pre-clear simulation:
+Run a mocked 4-intersection prototype pre-clear simulation:
 
 ```bash
 python scripts/demo_orchestrator.py --frames 120 --fps 15 --preempt-hops 2 --latch-seconds 3
@@ -180,11 +180,11 @@ Use this sequence during judging for a clean narrative:
      ```bash
      python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --with-orchestrator
      ```
-   - Say: "Signal decisions are closed-loop and updated continuously from live congestion score."
+   - Say: "Signal decisions are closed-loop and updated continuously from live congestion plus queue score."
 
 4. **Emergency logic (15-20s)**
-   - Press `e` to toggle manual emergency and show `ALL_GREEN` override.
-   - Say: "Emergency source can be manual, vision, GPS, or fusion; route pre-clear is enabled."
+   - Press `e` to toggle manual emergency and show a forced corridor lane.
+   - Say: "Emergency source can be manual, vision, GPS, or fusion; corridor pre-clear is a prototype artifact."
 
 5. **Evidence and impact (15-20s)**
    - Run with benchmark/report for artifacts:

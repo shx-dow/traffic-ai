@@ -46,7 +46,20 @@ def test_simulation_baseline_vs_adaptive_allocates_differently():
     )
 
 
+def test_simulation_wait_cycles_only_advance_when_a_phase_completes():
+    controller = SignalController()
+    events = [
+        {"lane_counts": {"north": 1, "south": 5, "east": 0, "west": 0}, "emergency": False}
+        for _ in range(10)
+    ]
+
+    run_signal_simulation(controller, events, fps=30)
+
+    assert all(value == 0 for value in controller._lane_wait_cycles.values()), controller._lane_wait_cycles
+
+
 if __name__ == "__main__":
     test_simulation_emergency_activation_and_resume()
     test_simulation_baseline_vs_adaptive_allocates_differently()
+    test_simulation_wait_cycles_only_advance_when_a_phase_completes()
     print("PASS test_simulation")

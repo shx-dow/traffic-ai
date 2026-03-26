@@ -38,17 +38,11 @@ def apply_emergency_override(
     if not emergency_active:
         return state
 
-    if str(corridor_lane).lower() == "all_green":
-        return {lane: "GREEN" for lane in LANES}
-
     if corridor_lane is None:
-        return {lane: "GREEN" for lane in LANES}
+        return state
 
     lane_name = corridor_lane.lower()
     if lane_name not in LANES:
-        return {lane: "GREEN" for lane in LANES}
+        return state
 
-    if emergency_active:
-        return {lane: ("GREEN" if lane == lane_name else "RED") for lane in LANES}
-
-    return state
+    return {lane: ("GREEN" if lane == lane_name else "RED") for lane in LANES}

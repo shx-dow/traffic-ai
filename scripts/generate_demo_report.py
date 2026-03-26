@@ -56,6 +56,8 @@ def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             "throughput_final": None,
             "top_decision_reason": None,
             "top_emergency_source": None,
+            "top_corridor_lane": None,
+            "top_corridor_source": None,
         }
 
     emergency_frames = sum(1 for row in rows if bool(row.get("emergency_active")))
@@ -65,6 +67,8 @@ def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     reasons = Counter(str(row.get("decision_reason", "")) for row in rows if row.get("decision_reason"))
     sources = Counter(str(row.get("emergency_source", "")) for row in rows if row.get("emergency_source"))
+    corridor_lanes = Counter(str(row.get("corridor_lane", "")) for row in rows if row.get("corridor_lane"))
+    corridor_sources = Counter(str(row.get("corridor_lane_source", "")) for row in rows if row.get("corridor_lane_source"))
 
     return {
         "frames": len(rows),
@@ -74,6 +78,8 @@ def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "throughput_final": final_throughput,
         "top_decision_reason": reasons.most_common(1)[0][0] if reasons else None,
         "top_emergency_source": sources.most_common(1)[0][0] if sources else None,
+        "top_corridor_lane": corridor_lanes.most_common(1)[0][0] if corridor_lanes else None,
+        "top_corridor_source": corridor_sources.most_common(1)[0][0] if corridor_sources else None,
     }
 
 
@@ -122,7 +128,7 @@ def render_markdown(
     lines = [
         "# Demo Report",
         "",
-        "## Runtime Summary",
+        "## Single-Node Runtime Summary",
         f"- Frames processed: {fmt(live['frames'])}",
         f"- Emergency frames: {fmt(live['emergency_frames'])}",
         f"- Mean average wait (s): {fmt(live['avg_wait_seconds_mean'])}",
@@ -130,12 +136,14 @@ def render_markdown(
         f"- Final throughput score: {fmt(live['throughput_final'])}",
         f"- Dominant decision reason: {fmt(live['top_decision_reason'])}",
         f"- Dominant emergency source: {fmt(live['top_emergency_source'])}",
+        f"- Dominant corridor lane: {fmt(live['top_corridor_lane'])}",
+        f"- Dominant corridor lane source: {fmt(live['top_corridor_source'])}",
         "",
         "## Benchmark Summary",
         f"- Wait reduction vs baseline (%): {fmt(benchmark['wait_reduction_pct'])}",
         f"- Throughput gain vs baseline (%): {fmt(benchmark['throughput_gain_pct'])}",
         "",
-        "## Orchestrator Summary",
+        "## Prototype Pre-Clear Summary",
         f"- Route: {fmt(orchestrator['route'])}",
         f"- Emergency nodes in final state: {fmt(orchestrator['final_emergency_nodes'])}",
         "",

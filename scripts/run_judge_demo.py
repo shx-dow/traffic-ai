@@ -28,7 +28,7 @@ def _wait_for_port(host: str, port: int, timeout_s: float = 8.0) -> bool:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="One-command judge demo runner")
+    parser = argparse.ArgumentParser(description="One-command judge demo runner for the single-node live runtime")
     parser.add_argument("--video-source", default="assets/sample_video.mp4")
     parser.add_argument("--camera-lane", choices=("north", "south", "east", "west"), default="north")
     parser.add_argument("--approach-roi", default="")
@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--with-orchestrator", action="store_true")
     parser.add_argument("--with-benchmark", action="store_true")
     parser.add_argument("--with-report", action="store_true")
+    parser.add_argument("--headless", action="store_true")
     parser.add_argument("--metrics-log-path", default="artifacts/live_metrics_demo.jsonl")
     parser.add_argument("--output-path", default="artifacts/demo_output.mp4")
     parser.add_argument("--report-path", default="artifacts/demo_report.md")
@@ -109,14 +110,17 @@ def main() -> int:
         if args.signal_state_roi:
             cmd.extend(["--signal-state-roi", args.signal_state_roi])
 
-        print("Running main demo runtime...")
+        if args.headless:
+            cmd.append("--headless")
+
+        print("Running single-node live runtime...")
         rc = subprocess.run(cmd, cwd=root).returncode
         if rc != 0:
             print(f"main.py exited with code {rc}")
             return rc
 
         if args.with_orchestrator:
-            print("Running orchestrator demo artifact...")
+            print("Running prototype pre-clear orchestrator artifact...")
             subprocess.run(
                 [python, "scripts/demo_orchestrator.py", "--frames", "120", "--fps", "15", "--preempt-hops", "2", "--latch-seconds", "3"],
                 cwd=root,
@@ -152,7 +156,7 @@ def main() -> int:
         print(f"  - {args.output_path}")
         print(f"  - {args.metrics_log_path}")
         if args.with_orchestrator:
-            print("  - artifacts/orchestrator_demo.json")
+            print("  - artifacts/orchestrator_demo.json (prototype pre-clear)")
         if args.with_benchmark:
             print("  - artifacts/metrics.json")
         if args.with_report:

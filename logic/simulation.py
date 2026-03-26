@@ -33,7 +33,6 @@ def run_signal_simulation(controller: Any, frame_events: List[Dict[str, Any]], f
             signal_states = dict(controller.current_state)
         else:
             signal_states = controller.get_current_signal_state(active_lane)
-            controller.record_cycle(active_lane, lane_counts)
 
             should_switch = controller.should_switch_lane(
                 active_lane=active_lane,
@@ -42,6 +41,7 @@ def run_signal_simulation(controller: Any, frame_events: List[Dict[str, Any]], f
                 fps=fps,
             )
             if should_switch:
+                controller.record_cycle(active_lane, lane_counts)
                 active_lane = controller.choose_next_lane(active_lane, lane_counts)
                 frame_counter = 0
             else:

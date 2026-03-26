@@ -35,8 +35,16 @@ def test_baseline_cycles_in_fixed_order():
     assert signal.choose_next_lane("west", {}) == "north"
 
 
+def test_baseline_resumes_to_baseline_after_emergency():
+    signal = BaselineSignalController(green_seconds=20)
+    signal.override_for_emergency("north")
+    signal.resume_adaptive()
+    assert signal.mode == "BASELINE"
+
+
 if __name__ == "__main__":
     test_baseline_green_times_are_constant()
     test_baseline_switches_after_fixed_time()
     test_baseline_cycles_in_fixed_order()
+    test_baseline_resumes_to_baseline_after_emergency()
     print("PASS test_baseline_signal")

@@ -164,3 +164,42 @@ python tests/test_detector_logic.py
 python tests/test_live_metrics.py
 python tests/test_orchestrator.py
 ```
+
+## Judge Demo Script (60-90 seconds)
+
+Use this sequence during judging for a clean narrative:
+
+1. **Problem statement (10s)**
+   - "Static traffic signals create avoidable congestion and delay emergency vehicles."
+
+2. **System overview (10s)**
+   - "This system uses per-camera AI detection, congestion scoring, and emergency preemption."
+
+3. **Live adaptive behavior (15-20s)**
+   - Run:
+     ```bash
+     python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --with-orchestrator
+     ```
+   - Say: "Signal decisions are closed-loop and updated continuously from live congestion score."
+
+4. **Emergency logic (15-20s)**
+   - Press `e` to toggle manual emergency and show `ALL_GREEN` override.
+   - Say: "Emergency source can be manual, vision, GPS, or fusion; route pre-clear is enabled."
+
+5. **Evidence and impact (15-20s)**
+   - Run with benchmark/report for artifacts:
+     ```bash
+     python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --with-ambulance-sim --with-orchestrator --with-benchmark --with-report
+     ```
+   - Show:
+     - `artifacts/demo_output.mp4`
+     - `artifacts/live_metrics_demo.jsonl`
+     - `artifacts/metrics.json`
+     - `artifacts/demo_report.md`
+
+### Judge talking points
+
+- "Per-camera deployment is practical for real intersections."
+- "Congestion scoring improves over count-only switching."
+- "Emergency mode supports ambulance and fire-service detection."
+- "We log explainable decisions and measurable KPI deltas."

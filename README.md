@@ -184,14 +184,16 @@ Set the SUMO binary folder on PATH if needed:
 set PATH=C:\Program Files (x86)\Eclipse\Sumo\bin;%PATH%
 ```
 
-Run the demo summaries:
+You can also set `SUMO_HOME` to `C:\Program Files (x86)\Eclipse\Sumo`.
+
+Run the SUMO baseline and adaptive comparison:
 
 ```bash
 python -m sumo_demo.run_pre_system --out artifacts/sumo_pre_system.csv
 python -m sumo_demo.run_post_system --out artifacts/sumo_post_system.csv
 ```
 
-This keeps SUMO as an optional validation/demo layer. The live prototype remains the OpenCV/YOLO runtime. If SUMO is installed, the same runners can be extended to use TraCI against a real network.
+This keeps SUMO as an optional validation/demo layer. The live prototype remains the OpenCV/YOLO runtime.
 
 ## Judge Demo Script (60-90 seconds)
 

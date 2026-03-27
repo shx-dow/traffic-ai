@@ -73,22 +73,23 @@ class VehicleDetector:
     def detect(self, frame: np.ndarray, *, video_source_hint: Optional[str] = None) -> Dict[str, Any]:
         """
         Input  : BGR numpy array (OpenCV frame)
-        Output : {vehicles, count, emergency, gps_emergency, raw_result, [fusion]}
+        Output : {vehicles, count, vision_emergency, gps_emergency, emergency, raw_result, [fusion]}
         """
         if not isinstance(frame, np.ndarray):
             raise TypeError("frame must be a numpy ndarray (OpenCV BGR image).")
 
         raw_result: Results = self._model.predict(source=frame, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
-        vehicles, emergency = self._vehicles_from_coco(raw_result)
-        vehicles, emergency = self._merge_ambulance_detections(frame, vehicles, emergency)
+        vehicles, vision_emergency = self._vehicles_from_coco(raw_result)
+        vehicles, vision_emergency = self._merge_ambulance_detections(frame, vehicles, vision_emergency)
 
         gps_status = self._check_gps_emergency()
         gps_emergency = bool(gps_status.get("emergency", False))
         out = {
             "vehicles": vehicles,
             "count": len(vehicles),
-            "emergency": emergency or gps_emergency,
+            "vision_emergency": vision_emergency,
             "gps_emergency": gps_emergency,
+            "emergency": bool(vision_emergency or gps_emergency),
             "gps_priority": gps_status,
             "raw_result": raw_result,
         }

@@ -1,0 +1,14 @@
+<configuration>
+    <input>
+        <net-file value="single_intersection.net.xml"/>
+        <route-files value="single_intersection.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="900"/>
+        <step-length value="1.0"/>
+    </time>
+    <report>
+        <verbose value="true"/>
+    </report>
+</configuration>

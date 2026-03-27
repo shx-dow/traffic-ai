@@ -23,13 +23,14 @@ def test_score_based_next_lane_prefers_high_congestion():
     assert next_lane == "south"
 
 
-def test_emergency_all_green_override():
-    state = apply_emergency_override({"north": "GREEN", "south": "RED", "east": "RED", "west": "RED"}, True, "all_green")
-    assert all(v == "GREEN" for v in state.values())
+def test_emergency_corridor_override_is_lane_specific():
+    state = apply_emergency_override({"north": "GREEN", "south": "RED", "east": "RED", "west": "RED"}, True, "south")
+    assert state["south"] == "GREEN"
+    assert state["north"] == "RED"
 
 
 if __name__ == "__main__":
     test_congestion_scores_include_waiting_factor()
     test_score_based_next_lane_prefers_high_congestion()
-    test_emergency_all_green_override()
+    test_emergency_corridor_override_is_lane_specific()
     print("PASS test_congestion")

@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logic.counter import LaneCounter
 from logic.emergency import apply_emergency_override, is_emergency_active
 from logic.signal import SignalController
+from main import compute_lane_scores_for_runtime
 
 
 def test_count_per_lane_basic():
@@ -168,6 +169,22 @@ def test_signal_choose_next_lane_prefers_starved_lane():
     print("PASS test_signal_choose_next_lane_prefers_starved_lane")
 
 
+def test_per_camera_queue_weighting_changes_lane_score():
+    signal = SignalController()
+    counts = {'north': 2, 'south': 0, 'east': 0, 'west': 0}
+
+    scores = compute_lane_scores_for_runtime(
+        signal,
+        counts,
+        per_camera_mode=True,
+        camera_lane='north',
+        queue_length=1,
+    )
+
+    assert scores['north'] == 4.0, f"Expected queue-aware score of 4.0, got {scores['north']}"
+    print("PASS test_per_camera_queue_weighting_changes_lane_score")
+
+
 def test_is_emergency_active_sources():
     assert is_emergency_active() is False
     assert is_emergency_active(vision_emergency=True) is True
@@ -181,9 +198,6 @@ def test_apply_emergency_override_states():
 
     no_emergency = apply_emergency_override(base, False)
     assert no_emergency == base
-
-    all_green = apply_emergency_override(base, True)
-    assert all(v == 'GREEN' for v in all_green.values())
 
     corridor = apply_emergency_override(base, True, corridor_lane='east')
     assert corridor['east'] == 'GREEN'
@@ -272,6 +286,7 @@ if __name__ == '__main__':
     test_signal_min_hold_prevents_early_switch()
     test_signal_switches_when_gap_is_large()
     test_signal_choose_next_lane_prefers_starved_lane()
+    test_per_camera_queue_weighting_changes_lane_score()
     test_is_emergency_active_sources()
     test_apply_emergency_override_states()
     test_per_camera_counter_counts_all_on_configured_lane()

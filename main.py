@@ -17,10 +17,12 @@ from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.live_metrics import LiveMetricsTracker
+from logic.orchestrator import CorridorOrchestrator
 from logic.roi import parse_rect_roi
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
-from logic.signal_state import SignalStateSensor, parse_roi_arg
+from logic.signal_state import (SignalStateSensor, parse_roi_arg,
+                                resolve_signal_reading)
 from logic.traffic_loop import build_signal_summary, is_balanced
 from ui.overlay import TrafficOverlay
 from utils.helpers import run_repo_pipeline
@@ -54,12 +56,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--signal-state-api-url", default=CONFIG.get("signal_state_api_url", ""), help="API endpoint returning {state, confidence}")
     p.add_argument("--signal-state-roi", default=CONFIG.get("signal_state_roi", ""), help="Traffic light ROI as x1,y1,x2,y2 for video signal sensing")
     p.add_argument("--signal-state-api-timeout", type=float, default=float(CONFIG.get("signal_state_api_timeout", 0.4)), help="Signal state API timeout seconds")
+    p.add_argument("--signal-state-fallback", choices=("none", "controller"), default="controller", help="Fallback source when signal sensing is unavailable")
     p.add_argument("--show-signal-roi", action="store_true", help="Draw the traffic-light ROI box when using video signal sensing")
     p.add_argument("--approach-roi", default=CONFIG.get("approach_roi", ""), help="Per-camera approach ROI x1,y1,x2,y2")
     p.add_argument("--queue-roi", default=CONFIG.get("queue_roi", ""), help="Per-camera stop-line queue ROI x1,y1,x2,y2")
     p.add_argument("--show-count-roi", action="store_true", help="Draw counting ROIs for approach and queue zones")
     p.add_argument("--ui-mode", choices=("demo", "debug"), default="demo", help="Overlay verbosity mode")
     p.add_argument("--emergency-source", choices=("vision", "gps", "fusion", "manual"), default="fusion", help="Emergency trigger mode")
+    p.add_argument("--enable-orchestrator", action="store_true", help="Enable prototype pre-clear planning")
+    p.add_argument("--orchestrator-route", default="int_a,int_b,int_c,int_d", help="Comma separated route node ids")
+    p.add_argument("--orchestrator-node-id", default="int_a", help="Current node id for this runtime instance")
+    p.add_argument("--orchestrator-preempt-hops", type=int, default=2, help="How many downstream intersections to pre-clear")
     p.add_argument(
         "--disable-gps",
         action="store_true",
@@ -77,10 +84,48 @@ def open_capture(source) -> cv2.VideoCapture:
     return cap
 
 
-def compute_lane_scores(signal_ctrl, lane_counts: dict[str, int]) -> dict[str, float]:
+def compute_lane_scores_for_runtime(
+    signal_ctrl,
+    lane_counts: dict[str, int],
+    *,
+    per_camera_mode: bool,
+    camera_lane: str | None,
+    queue_length: int,
+) -> dict[str, float]:
+    scoring_counts = dict(lane_counts)
+    lane = str(camera_lane or "").lower()
+    if per_camera_mode and lane in scoring_counts:
+        scoring_counts[lane] = float(scoring_counts[lane]) + (2.0 * max(0, float(queue_length)))
+        return {lane_name: float(count) for lane_name, count in scoring_counts.items()}
     if hasattr(signal_ctrl, "calculate_congestion_scores"):
-        return signal_ctrl.calculate_congestion_scores(lane_counts)
-    return {lane: float(count) for lane, count in lane_counts.items()}
+        return signal_ctrl.calculate_congestion_scores(scoring_counts)
+    return {lane_name: float(count) for lane_name, count in scoring_counts.items()}
+
+
+def resolve_emergency_source(*, manual_emergency: bool, vision_active: bool, gps_emergency: bool) -> str:
+    if manual_emergency:
+        return "manual"
+    if vision_active and gps_emergency:
+        return "vision+gps"
+    if vision_active:
+        return "vision"
+    if gps_emergency:
+        return "gps"
+    return "none"
+
+
+def annotate_corridor_source(base_source: str, emergency_source: str) -> str:
+    if emergency_source == "gps":
+        if base_source == "sticky_last":
+            return "gps_last_corridor"
+        if base_source == "assumed_fallback":
+            return "gps_camera_default"
+    if emergency_source == "manual":
+        if base_source == "sticky_last":
+            return "manual_last_corridor"
+        if base_source == "assumed_fallback":
+            return "manual_camera_default"
+    return base_source
 
 
 def get_capture_dimensions(cap: cv2.VideoCapture, default_width: int, default_height: int) -> tuple[int, int]:
@@ -158,13 +203,26 @@ def main() -> None:
     active_lane = lanes[0]
     frame_counter = 0
     processed_frames = 0
-    emergency_hold_frames = 0
-    last_corridor_lane = active_lane
+    vision_hold_frames = 0
+    last_corridor_lane = args.camera_lane
     manual_emergency = False
+    emergency_progress_frames = 0
+
+    route_nodes = [node.strip() for node in str(args.orchestrator_route).split(",") if node.strip()]
+    orchestrator_enabled = bool(args.enable_orchestrator and route_nodes)
+    if args.orchestrator_node_id not in route_nodes and route_nodes:
+        route_nodes.insert(0, args.orchestrator_node_id)
+    orchestrator = None
+    if orchestrator_enabled:
+        orchestrator = CorridorOrchestrator(
+            route_nodes,
+            preempt_hops=max(0, int(args.orchestrator_preempt_hops)),
+            latch_frames=max(1, int(EMERGENCY_LATCH_SECONDS * 30)),
+        )
+    orchestrator_emergency_nodes = 0
 
     fps = 30
     metrics = LiveMetricsTracker(fps=fps)
-    frame_delay_ms = int(1000 / fps)
     display_window = (not args.headless) and bool(CONFIG.get("display_window", True))
     show_kpi_hud = bool(CONFIG.get("show_kpi_hud", True)) and (not args.hide_kpi_hud)
 
@@ -197,67 +255,82 @@ def main() -> None:
         detection = detector.detect(frame)
 
         lane_counts = counter.count_per_lane(detection["vehicles"])
-        lane_scores = compute_lane_scores(signal_ctrl, lane_counts)
-        sensed_signal = signal_sensor.read(frame)
-        emergency_seen = bool(detection.get("emergency"))
+        lane_scores = compute_lane_scores_for_runtime(
+            signal_ctrl,
+            lane_counts,
+            per_camera_mode=per_camera_mode,
+            camera_lane=args.camera_lane,
+            queue_length=counter.last_queue_length,
+        )
+        sensed_signal_raw = signal_sensor.read(frame)
+        vision_emergency = bool(detection.get("vision_emergency"))
         gps_emergency = bool(detection.get("gps_emergency"))
         emergency_source = "none"
+        corridor = last_corridor_lane
+        corridor_lane_source = "idle"
 
         key = cv2.waitKey(1) & 0xFF if display_window else 255
         if key == ord("e"):
             manual_emergency = not manual_emergency
             LOGGER.info("Manual emergency toggled: %s", manual_emergency)
-            if manual_emergency:
-                emergency_hold_frames = int(max(1, EMERGENCY_LATCH_SECONDS * fps))
         elif key == ord("q"):
             LOGGER.info("'q' pressed — exiting")
             break
 
+        if vision_emergency:
+            vision_hold_frames = int(max(1, EMERGENCY_LATCH_SECONDS * fps))
+        elif vision_hold_frames > 0:
+            vision_hold_frames -= 1
+
+        vision_active = bool(vision_emergency or vision_hold_frames > 0)
         emergency_inputs = {
-            "vision": emergency_seen,
+            "vision": vision_active,
             "gps": gps_emergency,
-            "fusion": bool(emergency_seen or gps_emergency),
+            "fusion": bool(vision_active or gps_emergency),
             "manual": manual_emergency,
         }
-        emergency_triggered = emergency_inputs.get(args.emergency_source, False)
-        if manual_emergency:
-            emergency_source = "manual"
-        elif emergency_seen and gps_emergency:
-            emergency_source = "vision+gps"
-        elif emergency_seen:
-            emergency_source = "vision"
-        elif gps_emergency:
-            emergency_source = "gps"
-        if emergency_seen:
-            emergency_hold_frames = int(max(1, EMERGENCY_LATCH_SECONDS * fps))
-        elif emergency_hold_frames > 0:
-            emergency_hold_frames -= 1
+        emergency_active = bool(emergency_inputs.get(args.emergency_source, False))
+        emergency_source = resolve_emergency_source(
+            manual_emergency=manual_emergency,
+            vision_active=vision_active,
+            gps_emergency=gps_emergency,
+        )
+        if emergency_active and emergency_source != "manual":
+            emergency_progress_frames += 1
+        else:
+            emergency_progress_frames = 0
 
-        emergency_active = emergency_triggered or emergency_hold_frames > 0
-        force_all_green = manual_emergency
-
-        if emergency_active and signal_ctrl.mode != "EMERGENCY":
-            if force_all_green:
-                signal_ctrl.override_all_green()
-            else:
-                corridor = select_corridor_lane(
-                    vehicles=detection["vehicles"],
-                    lane_counts=lane_counts,
-                    lane_counter=counter,
-                    fallback_lane=active_lane,
-                    last_corridor_lane=last_corridor_lane,
-                )
-                last_corridor_lane = corridor
-                signal_ctrl.override_for_emergency(corridor)
-
-        if emergency_active and (not force_all_green) and signal_ctrl.mode == "EMERGENCY" and emergency_seen:
-            corridor = select_corridor_lane(
+        if emergency_active:
+            corridor, corridor_lane_source = select_corridor_lane(
                 vehicles=detection["vehicles"],
                 lane_counts=lane_counts,
                 lane_counter=counter,
-                fallback_lane=last_corridor_lane,
+                fallback_lane=(last_corridor_lane or args.camera_lane),
                 last_corridor_lane=last_corridor_lane,
             )
+            corridor_lane_source = annotate_corridor_source(corridor_lane_source, emergency_source)
+
+        if orchestrator is not None:
+            if emergency_active and emergency_source != "manual":
+                position_index = min(len(route_nodes) - 1, emergency_progress_frames // max(1, fps * 2))
+                plan = orchestrator.update(
+                    route=route_nodes,
+                    position_index=position_index,
+                    ambulance_lane=corridor,
+                )
+            else:
+                plan = orchestrator.update(route=None, position_index=None, ambulance_lane=None)
+            node_plan = plan.get(args.orchestrator_node_id)
+            if node_plan is not None and node_plan.mode == "EMERGENCY" and node_plan.corridor_lane:
+                corridor = node_plan.corridor_lane
+                corridor_lane_source = "orchestrator_plan"
+            orchestrator_emergency_nodes = sum(1 for p in plan.values() if p.mode == "EMERGENCY")
+
+        if emergency_active and signal_ctrl.mode != "EMERGENCY":
+            last_corridor_lane = corridor
+            signal_ctrl.override_for_emergency(corridor)
+
+        if emergency_active and signal_ctrl.mode == "EMERGENCY":
             if corridor != last_corridor_lane:
                 last_corridor_lane = corridor
                 signal_ctrl.override_for_emergency(corridor)
@@ -268,10 +341,9 @@ def main() -> None:
 
         if signal_ctrl.mode == "EMERGENCY":
             signal_states = signal_ctrl.current_state
-            decision_reason = f"Emergency override ({emergency_source})"
+            decision_reason = f"Emergency corridor override ({emergency_source})"
         else:
             signal_states = signal_ctrl.get_current_signal_state(active_lane)
-            signal_ctrl.record_cycle(active_lane, lane_counts)
 
             should_switch = signal_ctrl.should_switch_lane(
                 active_lane=active_lane,
@@ -281,6 +353,7 @@ def main() -> None:
             )
 
             if should_switch:
+                signal_ctrl.record_cycle(active_lane, lane_counts)
                 active_lane = signal_ctrl.choose_next_lane(active_lane, lane_scores)
                 frame_counter = 0
                 decision_reason = f"Switched to {active_lane} (higher congestion score)"
@@ -293,6 +366,14 @@ def main() -> None:
                     if balanced
                     else f"Holding {active_lane} (min hold/score gap)"
                 )
+
+        sensed_signal = resolve_signal_reading(
+            sensed_signal_raw,
+            requested_source=args.signal_state_source,
+            fallback_mode=args.signal_state_fallback,
+            signal_states=signal_states,
+            camera_lane=args.camera_lane,
+        )
 
         green_lanes = [lane for lane, state in signal_states.items() if state == "GREEN"]
         metrics.update(lane_counts=lane_counts, green_lanes=green_lanes, mode=signal_ctrl.mode)
@@ -308,13 +389,22 @@ def main() -> None:
                 "lane_scores": lane_scores,
                 "decision_reason": decision_reason,
                 "emergency_source": emergency_source,
+                "corridor_lane": corridor,
+                "corridor_lane_source": corridor_lane_source,
+                "orchestrator_emergency_nodes": orchestrator_emergency_nodes,
                 **kpi_snapshot,
             }
             gps_priority = detection.get("gps_priority")
             if isinstance(gps_priority, dict):
                 row["gps_priority"] = gps_priority
-            if sensed_signal is not None:
+            if sensed_signal_raw is not None:
                 row["sensed_signal"] = {
+                    "state": sensed_signal_raw.state,
+                    "source": sensed_signal_raw.source,
+                    "confidence": sensed_signal_raw.confidence,
+                }
+            if sensed_signal is not None and sensed_signal.source == "controller_fallback":
+                row["sensed_signal_fallback"] = {
                     "state": sensed_signal.state,
                     "source": sensed_signal.source,
                     "confidence": sensed_signal.confidence,
@@ -334,33 +424,42 @@ def main() -> None:
             ui_mode=args.ui_mode,
             per_camera_mode=per_camera_mode,
         )
-        y_text = 30
-        cv2.putText(display, f"Mode: {signal_ctrl.mode}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        y_text += 34
+        status_lines: list[tuple[str, tuple[int, int, int], float]] = [
+            (f"Mode: {signal_ctrl.mode}", (90, 255, 120), 0.82),
+        ]
         if args.ui_mode == "debug" and show_directional_counts:
-            cv2.putText(display, f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+            status_lines.append(
+                (f"Counts: N{lane_counts['north']} S{lane_counts['south']} E{lane_counts['east']} W{lane_counts['west']}", (255, 232, 140), 0.72)
+            )
         else:
             approach_count = int(lane_counts.get(args.camera_lane, 0))
             score = float(lane_scores.get(args.camera_lane, 0.0))
-            cv2.putText(display, f"Approach {args.camera_lane.title()} Count: {approach_count}  Score: {score:.1f}  Queue: {counter.last_queue_length}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (255, 255, 0), 2)
-        y_text += 36
+            status_lines.append(
+                (f"Approach {args.camera_lane.title()} Count: {approach_count}  Score: {score:.1f}  Queue: {counter.last_queue_length}", (120, 240, 255), 0.72)
+            )
         if sensed_signal is not None:
-            cv2.putText(display, f"Observed signal: {sensed_signal.state} ({sensed_signal.source}, {sensed_signal.confidence:.2f})", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 255, 200), 2)
+            if sensed_signal.source == "controller_fallback":
+                status_lines.append((f"Observed signal: {sensed_signal.state} (fallback: controller)", (200, 228, 255), 0.62))
+            else:
+                status_lines.append((f"Observed signal: {sensed_signal.state} ({sensed_signal.source}, {sensed_signal.confidence:.2f})", (200, 255, 200), 0.62))
         elif args.signal_state_source != "none":
-            cv2.putText(display, f"Observed signal: UNKNOWN ({args.signal_state_source})", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 220, 255), 2)
-        y_text += 32
+            status_lines.append((f"Observed signal: UNKNOWN ({args.signal_state_source})", (200, 220, 255), 0.62))
 
         if emergency_active:
-            cv2.putText(display, "EMERGENCY MODE ACTIVE", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
-            y_text += 30
-            cv2.putText(display, f"Emergency source: {emergency_source}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (220, 220, 255), 2)
-            y_text += 28
+            status_lines.append(("Emergency mode active", (100, 150, 255), 0.7))
+            status_lines.append((f"Emergency source: {emergency_source}", (220, 220, 255), 0.62))
+            corridor_label = corridor_lane_source.replace("_", " ")
+            status_lines.append((f"Corridor lane: {corridor} ({corridor_label})", (220, 245, 220), 0.62))
 
         signal_summary = build_signal_summary(signal_states)
-        cv2.putText(display, f"Signal output: {signal_summary}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (215, 245, 255), 2)
-        y_text += 28
-        cv2.putText(display, f"Decision: {decision_reason}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (215, 245, 255), 2)
-        y_text += 32
+        status_lines.append((f"Signal output: {signal_summary}", (235, 244, 255), 0.62))
+        status_lines.append((f"Decision: {decision_reason}", (235, 244, 255), 0.62))
+        if orchestrator is not None and (orchestrator_emergency_nodes > 0 or emergency_active):
+            status_lines.append((f"Prototype pre-clear nodes: {orchestrator_emergency_nodes}", (220, 245, 220), 0.62))
+
+        overlay.draw_status_card(display, status_lines)
+
+        y_text = 42 + (30 * len(status_lines))
 
         gps_priority = detection.get("gps_priority") if isinstance(detection, dict) else None
         if isinstance(gps_priority, dict) and gps_priority.get("emergency"):
@@ -369,7 +468,12 @@ def main() -> None:
             vid = gps_priority.get("vehicle_id")
             eta_text = f"{float(eta):.1f}s" if isinstance(eta, (int, float)) else "-"
             dist_text = f"{float(dist):.2f}km" if isinstance(dist, (int, float)) else "-"
-            cv2.putText(display, f"GPS priority: {vid or 'unknown'} ETA {eta_text} Dist {dist_text}", (10, y_text), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 230, 180), 2)
+            overlay.draw_status_card(
+                display,
+                [(f"GPS priority: {vid or 'unknown'} ETA {eta_text} Dist {dist_text}", (255, 230, 180), 0.62)],
+                y=y_text,
+                width=500,
+            )
 
         if args.show_signal_roi and args.signal_state_source == "video":
             roi = signal_sensor.get_effective_roi(frame)

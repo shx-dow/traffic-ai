@@ -31,4 +31,4 @@ class BaselineSignalController:
         return self.get_current_signal_state(corridor_lane)
 
     def resume_adaptive(self):
-        self.mode = "ADAPTIVE"
+        self.mode = "BASELINE"

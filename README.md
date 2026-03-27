@@ -2,15 +2,15 @@
 
 ## Scope
 
-This repository implements the core logic for a single-intersection traffic controller:
+This repository implements a judge-ready single-intersection traffic controller with a prototype multi-node pre-clear demo:
 
 - real-time vehicle detection
 - lane-wise counting
 - adaptive signal policy
-- emergency override behavior
+- emergency priority corridor behavior
 - baseline vs adaptive benchmark with metrics output
 
-UI and multi-intersection orchestration are separate workstreams.
+The live runtime is single-node. Multi-intersection orchestration is presented as a prototype pre-clear artifact, not a full live route-graph deployment.
 
 ## Core modules
 
@@ -57,7 +57,7 @@ Emergency trigger modes:
 python main.py --mode adaptive --emergency-source manual --video-source assets/sample_video.mp4
 ```
 
-Press `e` to toggle emergency ALL_GREEN mode.
+Press `e` to toggle a manual corridor override on the current approach.
 
 Emergency detection supports ambulance and fire-service vehicles (`fire_truck`) via model label normalization.
 
@@ -69,10 +69,28 @@ python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera
 
 This generates demo artifacts under `artifacts/` including output video, runtime metrics, orchestrator summary, and benchmark metrics.
 
+Add `--with-report` to auto-generate a final concise report for judges:
+
+```bash
+python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --with-ambulance-sim --with-orchestrator --with-benchmark --with-report
+```
+
+Or generate report directly from existing artifacts:
+
+```bash
+python scripts/generate_demo_report.py --metrics-log artifacts/live_metrics_demo.jsonl --benchmark artifacts/metrics.json --orchestrator artifacts/orchestrator_demo.json --output-video artifacts/demo_output.mp4 --out artifacts/demo_report.md
+```
+
 Optional top-down fallback (center-split N/S/E/W heuristic):
 
 ```bash
 python main.py --mode adaptive --top-down-view --video-source assets/sample_video.mp4
+```
+
+Enable prototype route-aware corridor pre-clear in runtime (single-node view of a multi-intersection plan):
+
+```bash
+python main.py --mode adaptive --enable-orchestrator --orchestrator-route int_a,int_b,int_c,int_d --orchestrator-node-id int_a --orchestrator-preempt-hops 2 --video-source assets/sample_video.mp4
 ```
 
 Optional observed traffic-light sensing (credibility overlay):
@@ -81,13 +99,19 @@ Optional observed traffic-light sensing (credibility overlay):
 python main.py --mode adaptive --signal-state-source video --signal-state-roi 0,0,220,160 --video-source assets/sample_video.mp4
 ```
 
+If sensing is unavailable, fallback to controller signal state (default):
+
+```bash
+python main.py --mode adaptive --signal-state-source video --signal-state-fallback controller --video-source assets/sample_video.mp4
+```
+
 Or via API source:
 
 ```bash
 python main.py --mode adaptive --signal-state-source api --signal-state-api-url http://localhost:9000/signal-state --video-source assets/sample_video.mp4
 ```
 
-GPS emergency prioritization now includes ETA and distance in runtime overlays and metrics logs when gps_server is running.
+GPS emergency prioritization now includes ETA, distance, corridor lane, and lane-source labeling in runtime overlays and metrics logs when gps_server is running.
 
 Baseline mode:
 
@@ -115,7 +139,7 @@ Output file:
 
 ## Multi-intersection demo
 
-Run a mocked 4-intersection corridor pre-clear simulation:
+Run a mocked 4-intersection prototype pre-clear simulation:
 
 ```bash
 python scripts/demo_orchestrator.py --frames 120 --fps 15 --preempt-hops 2 --latch-seconds 3
@@ -139,4 +163,86 @@ python tests/test_custom_ambulance.py
 python tests/test_detector_logic.py
 python tests/test_live_metrics.py
 python tests/test_orchestrator.py
+python tests/test_sumo_demo.py
 ```
+
+## SUMO Demo (optional)
+
+Prerequisites:
+- `sumo`, `sumo-gui`, `netedit`
+- Python bindings: `traci`, `sumolib`
+
+Install Python bindings:
+
+```bash
+python -m pip install sumolib traci
+```
+
+Set the SUMO binary folder on PATH if needed:
+
+```bash
+set PATH=C:\Program Files (x86)\Eclipse\Sumo\bin;%PATH%
+```
+
+You can also set `SUMO_HOME` to `C:\Program Files (x86)\Eclipse\Sumo`.
+
+Run the SUMO baseline and adaptive comparison:
+
+```bash
+python -m sumo_demo.run_pre_system --out artifacts/sumo_pre_system.csv
+python -m sumo_demo.run_post_system --out artifacts/sumo_post_system.csv
+```
+
+To view the simulation in the GUI, add `--gui`:
+
+```bash
+python -m sumo_demo.run_pre_system --gui --out artifacts/sumo_pre_system.csv
+python -m sumo_demo.run_post_system --gui --out artifacts/sumo_post_system.csv
+```
+
+If the simulation still moves too fast, increase delay:
+
+```bash
+python -m sumo_demo.run_pre_system --gui --delay 200 --out artifacts/sumo_pre_system.csv
+```
+
+This keeps SUMO as an optional validation/demo layer. The live prototype remains the OpenCV/YOLO runtime.
+
+## Judge Demo Script (60-90 seconds)
+
+Use this sequence during judging for a clean narrative:
+
+1. **Problem statement (10s)**
+   - "Static traffic signals create avoidable congestion and delay emergency vehicles."
+
+2. **System overview (10s)**
+   - "This system uses per-camera AI detection, congestion scoring, and emergency preemption."
+
+3. **Live adaptive behavior (15-20s)**
+   - Run:
+     ```bash
+     python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --with-orchestrator
+     ```
+   - Say: "Signal decisions are closed-loop and updated continuously from live congestion plus queue score."
+
+4. **Emergency logic (15-20s)**
+   - Press `e` to toggle manual emergency and show a forced corridor lane.
+   - Say: "Emergency source can be manual, vision, GPS, or fusion; corridor pre-clear is a prototype artifact."
+
+5. **Evidence and impact (15-20s)**
+   - Run with benchmark/report for artifacts:
+     ```bash
+     python scripts/run_judge_demo.py --video-source assets/sample_video.mp4 --camera-lane north --approach-roi 120,220,1180,700 --queue-roi 420,360,980,700 --with-ambulance-sim --with-orchestrator --with-benchmark --with-report
+     ```
+   - Show:
+     - `artifacts/demo_output.mp4`
+     - `artifacts/live_metrics_demo.jsonl`
+     - `artifacts/metrics.json`
+     - `artifacts/demo_report.md`
+
+### Judge talking points
+
+- "Per-camera deployment is practical for real intersections."
+- "Congestion scoring improves over count-only switching."
+- "Emergency mode supports ambulance and fire-service detection."
+- "We log explainable decisions and measurable KPI deltas."

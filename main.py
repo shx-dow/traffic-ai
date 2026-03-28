@@ -205,7 +205,7 @@ def main() -> None:
     processed_frames = 0
     vision_hold_frames = 0
     last_corridor_lane = args.camera_lane
-    manual_emergency = False
+    manual_emergency_override = False
     emergency_progress_frames = 0
 
     route_nodes = [node.strip() for node in str(args.orchestrator_route).split(",") if node.strip()]
@@ -271,8 +271,8 @@ def main() -> None:
 
         key = cv2.waitKey(1) & 0xFF if display_window else 255
         if key == ord("e"):
-            manual_emergency = not manual_emergency
-            LOGGER.info("Manual emergency toggled: %s", manual_emergency)
+            manual_emergency_override = not manual_emergency_override
+            LOGGER.info("Manual emergency override toggled: %s", manual_emergency_override)
         elif key == ord("q"):
             LOGGER.info("'q' pressed — exiting")
             break
@@ -287,11 +287,11 @@ def main() -> None:
             "vision": vision_active,
             "gps": gps_emergency,
             "fusion": bool(vision_active or gps_emergency),
-            "manual": manual_emergency,
+            "manual": manual_emergency_override,
         }
-        emergency_active = bool(emergency_inputs.get(args.emergency_source, False))
+        emergency_active = bool(manual_emergency_override or emergency_inputs.get(args.emergency_source, False))
         emergency_source = resolve_emergency_source(
-            manual_emergency=manual_emergency,
+            manual_emergency=manual_emergency_override,
             vision_active=vision_active,
             gps_emergency=gps_emergency,
         )
@@ -445,8 +445,9 @@ def main() -> None:
         elif args.signal_state_source != "none":
             status_lines.append((f"Observed signal: UNKNOWN ({args.signal_state_source})", (200, 220, 255), 0.62))
 
+        if args.ui_mode == "debug" or emergency_active:
+            status_lines.append((f"Emergency mode: {'ON' if emergency_active else 'OFF'}", (100, 150, 255) if emergency_active else (180, 220, 180), 0.7))
         if emergency_active:
-            status_lines.append(("Emergency mode active", (100, 150, 255), 0.7))
             status_lines.append((f"Emergency source: {emergency_source}", (220, 220, 255), 0.62))
             corridor_label = corridor_lane_source.replace("_", " ")
             status_lines.append((f"Corridor lane: {corridor} ({corridor_label})", (220, 245, 220), 0.62))

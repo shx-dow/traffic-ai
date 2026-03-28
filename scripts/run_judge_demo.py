@@ -42,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--with-benchmark", action="store_true")
     parser.add_argument("--with-report", action="store_true")
     parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--hide-kpi-hud", action="store_true")
     parser.add_argument("--metrics-log-path", default="artifacts/live_metrics_demo.jsonl")
     parser.add_argument("--output-path", default="artifacts/demo_output.mp4")
     parser.add_argument("--report-path", default="artifacts/demo_report.md")
@@ -112,6 +113,8 @@ def main() -> int:
 
         if args.headless:
             cmd.append("--headless")
+        if args.hide_kpi_hud:
+            cmd.append("--hide-kpi-hud")
 
         print("Running single-node live runtime...")
         rc = subprocess.run(cmd, cwd=root).returncode

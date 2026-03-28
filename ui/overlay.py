@@ -82,7 +82,9 @@ class TrafficOverlay:
         if kpi_snapshot:
             self._draw_kpi_panel(frame, kpi_snapshot)
         if emergency_active:
-            self._draw_emergency_banner(frame)
+            self._draw_emergency_banner(frame, active=True)
+        elif mode == "debug":
+            self._draw_emergency_banner(frame, active=False)
         return frame
 
     def _draw_bounding_boxes(self, frame: Any, vehicles: List[Dict[str, Any]], *, show_labels: bool) -> None:
@@ -158,12 +160,14 @@ class TrafficOverlay:
             y = y0 + 60 + (i * 22)
             self._draw_text(frame, f"{lane}: {state}", (x0 + 12, y), scale=0.54, color=color, thickness=2)
 
-    def _draw_emergency_banner(self, frame: Any) -> None:
+    def _draw_emergency_banner(self, frame: Any, *, active: bool = True) -> None:
         h, w = frame.shape[:2]
         overlay = frame.copy()
-        cv2.rectangle(overlay, (0, 0), (w, 42), (0, 0, 255), -1)
+        color = (0, 0, 255) if active else (45, 90, 45)
+        cv2.rectangle(overlay, (0, 0), (w, 42), color, -1)
         cv2.addWeighted(overlay, 0.35, frame, 0.65, 0, frame)
-        self._draw_text(frame, "EMERGENCY MODE", (w // 2 - 130, 28), scale=0.85, color=(255, 255, 255), thickness=2)
+        label = "EMERGENCY MODE ON" if active else "EMERGENCY MODE OFF"
+        self._draw_text(frame, label, (w // 2 - 155, 28), scale=0.85, color=(255, 255, 255), thickness=2)
 
     def _draw_kpi_panel(self, frame: Any, kpi_snapshot: Dict[str, Any]) -> None:
         h, _ = frame.shape[:2]

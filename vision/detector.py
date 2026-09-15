@@ -28,12 +28,15 @@ class VehicleDetector:
         enrich_cross_dataset: Optional[bool] = None,
         ambulance_mode: Optional[str] = None,
         ambulance_confidence: Optional[float] = None,
+        confirm_vision_frames: Optional[int] = None,
+        vision_grace_frames: Optional[int] = None,
     ) -> None:
         from config import (AMBULANCE_AUX_MODEL_PATH, AMBULANCE_CONFIDENCE,
                             AMBULANCE_CUSTOM_MODEL_PATH,
                             AMBULANCE_DETECTION_MODE,
                             AMBULANCE_WORLD_CONFIDENCE, AMBULANCE_WORLD_MODEL,
-                            DETECTOR_ENRICH_CROSS_DATASET)
+                            DETECTOR_ENRICH_CROSS_DATASET,
+                            VISION_CONFIRM_FRAMES, VISION_GRACE_FRAMES)
 
         self._model = YOLO(model_path)
         self._logger = logging.getLogger(__name__)
@@ -68,6 +71,13 @@ class VehicleDetector:
             if aux_path.is_file():
                 self._ambulance_aux = YOLO(str(aux_path.resolve()))
 
+        # Temporal confirmation of vision emergency detections.
+        self._confirm_vision_frames = int(confirm_vision_frames if confirm_vision_frames is not None else VISION_CONFIRM_FRAMES)
+        self._vision_grace_frames = int(vision_grace_frames if vision_grace_frames is not None else VISION_GRACE_FRAMES)
+        self._vision_detect_streak = 0
+        self._vision_confirmed = False
+        self._vision_grace = 0
+
     # Public API
 
     def detect(self, frame: np.ndarray, *, video_source_hint: Optional[str] = None) -> Dict[str, Any]:
@@ -81,6 +91,7 @@ class VehicleDetector:
         raw_result: Results = self._model.predict(source=frame, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
         vehicles, vision_emergency = self._vehicles_from_coco(raw_result)
         vehicles, vision_emergency = self._merge_ambulance_detections(frame, vehicles, vision_emergency)
+        vision_emergency = self._temporal_confirm(bool(vision_emergency))
 
         gps_status = self._check_gps_emergency()
         gps_emergency = bool(gps_status.get("emergency", False))
@@ -96,6 +107,41 @@ class VehicleDetector:
         return self._attach_fusion(out, video_source_hint)
 
     # Detection helpers
+
+    def _temporal_confirm(self, raw: bool) -> bool:
+        """
+        Temporal confirmation: an emergency detection only becomes confirmed after
+        `_confirm_vision_frames` consecutive frames report it, and a confirmed
+        emergency survives up to `_vision_grace_frames` missed frames before
+        being cancelled. Uses attribute defaults so bare instances (e.g. created
+        via __new__ in tests) pass raw detections straight through.
+        """
+        confirm_frames = int(getattr(self, "_confirm_vision_frames", 0) or 0)
+        if confirm_frames <= 0:
+            return raw
+
+        streak = int(getattr(self, "_vision_detect_streak", 0))
+        confirmed = bool(getattr(self, "_vision_confirmed", False))
+        grace = int(getattr(self, "_vision_grace", 0))
+        grace_frames = int(getattr(self, "_vision_grace_frames", 0))
+
+        if raw:
+            streak += 1
+            if streak >= confirm_frames:
+                confirmed = True
+                grace = grace_frames
+        else:
+            streak = 0
+            if confirmed and grace_frames > 0:
+                if grace > 0:
+                    grace -= 1
+                else:
+                    confirmed = False
+
+        self._vision_detect_streak = streak
+        self._vision_confirmed = confirmed
+        self._vision_grace = grace
+        return confirmed
 
     def _vehicles_from_coco(self, raw_result: Results) -> Tuple[List[Detection], bool]:
         vehicles: List[Detection] = []

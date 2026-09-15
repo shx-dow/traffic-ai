@@ -13,7 +13,8 @@ from pathlib import Path
 import cv2
 
 from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
-                    EMERGENCY_LATCH_SECONDS, MODEL_PATH)
+                    EMERGENCY_LATCH_SECONDS, MODEL_PATH,
+                    VISION_CONFIRM_FRAMES, VISION_GRACE_FRAMES)
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.live_metrics import LiveMetricsTracker
@@ -172,7 +173,11 @@ def main() -> None:
 
     frame_width, frame_height = get_capture_dimensions(cap, args.frame_width, args.frame_height)
 
-    detector = VehicleDetector(model_path=args.model_path)
+    detector = VehicleDetector(
+        model_path=args.model_path,
+        confirm_vision_frames=int(CONFIG.get("vision_confirm_frames", VISION_CONFIRM_FRAMES)),
+        vision_grace_frames=int(CONFIG.get("vision_grace_frames", VISION_GRACE_FRAMES)),
+    )
     counter_mode = "top_down" if args.top_down_view else str(CONFIG.get("counter_mode", "per_camera"))
     per_camera_mode = counter_mode == "per_camera"
     show_directional_counts = counter_mode == "top_down"
@@ -326,39 +331,49 @@ def main() -> None:
                 corridor_lane_source = "orchestrator_plan"
             orchestrator_emergency_nodes = sum(1 for p in plan.values() if p.mode == "EMERGENCY")
 
-        if emergency_active and signal_ctrl.mode != "EMERGENCY":
-            last_corridor_lane = corridor
-            signal_ctrl.override_for_emergency(corridor)
-
-        if emergency_active and signal_ctrl.mode == "EMERGENCY":
-            if corridor != last_corridor_lane:
-                last_corridor_lane = corridor
-                signal_ctrl.override_for_emergency(corridor)
-
-        if not emergency_active and signal_ctrl.mode == "EMERGENCY":
-            signal_ctrl.resume_adaptive()
-            frame_counter = 0
+        signal_ctrl.tick(fps)
 
         if signal_ctrl.mode == "EMERGENCY":
-            signal_states = signal_ctrl.current_state
+            if not emergency_active and signal_ctrl.emergency_state == "PREEMPTION":
+                signal_ctrl.begin_recovery(fps)
+                frame_counter = 0
+            if emergency_active and corridor != last_corridor_lane:
+                last_corridor_lane = corridor
+                signal_ctrl.request_emergency_preemption(corridor, fps, current_green_lane=active_lane)
+            signal_states = signal_ctrl.get_current_signal_state(active_lane)
             decision_reason = f"Emergency corridor override ({emergency_source})"
         else:
-            signal_states = signal_ctrl.get_current_signal_state(active_lane)
-
-            should_switch = signal_ctrl.should_switch_lane(
-                active_lane=active_lane,
-                lane_counts=lane_scores,
-                frame_counter=frame_counter,
-                fps=fps,
-            )
-
-            if should_switch:
-                signal_ctrl.record_cycle(active_lane, lane_counts)
-                active_lane = signal_ctrl.choose_next_lane(active_lane, lane_scores)
-                frame_counter = 0
-                decision_reason = f"Switched to {active_lane} (higher congestion score)"
+            if emergency_active:
+                last_corridor_lane = corridor
+                signal_ctrl.request_emergency_preemption(corridor, fps, current_green_lane=active_lane)
+                signal_states = signal_ctrl.get_current_signal_state(active_lane)
+                decision_reason = f"Emergency corridor override ({emergency_source})"
             else:
-                frame_counter += 1
+                signal_states = signal_ctrl.get_current_signal_state(active_lane)
+
+                should_switch = (
+                    signal_ctrl.should_switch_lane(
+                        active_lane=active_lane,
+                        lane_counts=lane_scores,
+                        frame_counter=frame_counter,
+                        fps=fps,
+                    )
+                    and not signal_ctrl.is_transitioning
+                )
+
+                if should_switch:
+                    signal_ctrl.record_cycle(active_lane, lane_counts)
+                    prev_lane = active_lane
+                    active_lane = signal_ctrl.choose_next_lane(active_lane, lane_scores)
+                    signal_ctrl.begin_lane_transition(
+                        prev_lane=prev_lane,
+                        next_lane=active_lane,
+                        fps=fps,
+                    )
+                    frame_counter = 0
+                    decision_reason = f"Switched to {active_lane} (higher congestion score)"
+                else:
+                    frame_counter += 1
                 balance_gap = float(getattr(signal_ctrl, "CONGESTION_BALANCE_GAP", 2.5))
                 balanced = is_balanced(lane_scores.values(), balance_gap)
                 decision_reason = (

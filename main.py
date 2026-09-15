@@ -374,8 +374,12 @@ def main() -> None:
                     decision_reason = f"Switched to {active_lane} (higher congestion score)"
                 else:
                     frame_counter += 1
-                balance_gap = float(getattr(signal_ctrl, "CONGESTION_BALANCE_GAP", 2.5))
-                balanced = is_balanced(lane_scores.values(), balance_gap)
+                balance_gap = getattr(signal_ctrl, "_effective_switch_gap", None)
+                if callable(balance_gap):
+                    gap_value = balance_gap(float(max(lane_scores.values())))
+                else:
+                    gap_value = float(getattr(signal_ctrl, "CONGESTION_BALANCE_GAP", 2.5))
+                balanced = is_balanced(lane_scores.values(), gap_value)
                 decision_reason = (
                     f"Holding {active_lane} (balanced flow)"
                     if balanced

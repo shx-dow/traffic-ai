@@ -28,6 +28,11 @@ class SignalController:
         self.SWITCH_GAP = 3
         self.CONGESTION_WAIT_WEIGHT = 2.0
         self.CONGESTION_BALANCE_GAP = 2.5
+        self.SWITCH_GAP_RELATIVE = 0.3   # switch gap scales with the active lane's load
+        self.GAP_EARLY_EXIT_MIN_SERVICE_FRAC = 0.7  # share of proportional green the
+                                                    # active lane must serve before a
+                                                    # raw gap-based early exit is allowed
+        self.GAP_ACTIVE_CLEAR_THRESHOLD = 3.0      # active lane judged "essentially served"
         self.MAX_WAIT_CYCLES = 4
         self.mode = 'ADAPTIVE'
         self.lanes = ('north', 'south', 'east', 'west')
@@ -128,13 +133,28 @@ class SignalController:
                 best_other_lane = lane
                 best_other_score = score
 
-        if best_other_lane and best_other_score >= active_score + self.CONGESTION_BALANCE_GAP:
-            return True
+        if best_other_lane and best_other_score >= active_score + self._effective_switch_gap(active_score):
+            gap_exit_allowed = (
+                active_score <= self.GAP_ACTIVE_CLEAR_THRESHOLD
+                or frame_counter >= int(active_frames_target * self.GAP_EARLY_EXIT_MIN_SERVICE_FRAC)
+            )
+            if gap_exit_allowed:
+                return True
 
         if frame_counter >= int(self.MAX_GREEN * fps):
             return True
 
         return False
+
+    def _effective_switch_gap(self, active_score: float) -> float:
+        """Balance gap that scales with the active lane's load.
+
+        Under light load the absolute CONGESTION_BALANCE_GAP dominates (small
+        counts: 2.5 vehicles is a meaningful difference).  Under heavy load the
+        gap grows proportionally to the active lane's score so the controller
+        does not flip lanes over noise when several approaches are saturated.
+        """
+        return max(self.CONGESTION_BALANCE_GAP, float(active_score) * self.SWITCH_GAP_RELATIVE)
 
     def choose_next_lane(self, active_lane, lane_counts):
         scores = self._normalize_numeric(lane_counts)

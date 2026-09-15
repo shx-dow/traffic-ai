@@ -127,15 +127,22 @@ python main.py --run-pipeline --mode adaptive --video-source assets/sample_video
 
 ## Benchmark
 
-Generate baseline vs adaptive metrics:
+Single-seed head-to-head comparison across all scenarios:
 
 ```bash
-python scripts/run_benchmark.py
+python -m sumo_demo.evaluate --steps 900 --seed 42
 ```
 
-Output file:
+Multi-seed benchmark with mean/std aggregation and persistent JSON artifact:
 
-- `artifacts/metrics.json`
+```bash
+python -m sumo_demo.benchmark --steps 600 --seeds 42 43 44 45 46
+```
+
+Output file: `profiling/artifacts/benchmark_results.json`
+
+Emergency corridor timing (time_to_preemption, corridor_clearance, recovery_time)
+is surfaced automatically when the scenario contains an emergency event.
 
 ## Multi-intersection demo
 
@@ -164,6 +171,21 @@ python tests/test_detector_logic.py
 python tests/test_live_metrics.py
 python tests/test_orchestrator.py
 python tests/test_sumo_demo.py
+python tests/test_detector.py           # falls back to synthetic if no camera/video
+```
+
+### Harness, TraCI slot-in, and emergency temporal contract tests
+
+These tests validate the evaluation harness, the SUMO/TraCI integration
+(mocked and live-stubbed), and the emergency preemption timing contract.
+No real SUMO install is required:
+
+```bash
+python tests/test_harness.py
+python tests/test_traci_slotin.py       # mapping / state-string / XML shape tests
+python tests/test_traci_loop.py         # full bridge loop against a FakeTraCI stub
+python tests/test_emergency_temporal.py # preemption timing, corridor isolation, recovery
+python tests/test_benchmark.py          # multi-seed aggregation + JSON artifact
 ```
 
 ## SUMO Demo (optional)

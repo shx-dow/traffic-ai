@@ -206,14 +206,8 @@ class SignalController:
                 if self.phase == 'YELLOW':
                     self.phase = 'ALL_RED'
                     self.phase_remaining_frames = int(self.ALL_RED_TIME * fps)
-                else:  # ALL_RED -> back to adaptive control
-                    self.mode = 'ADAPTIVE'
-                    self.emergency_state = 'NONE'
-                    self.phase = 'GREEN'
-                    self.transition_next_lane = None
-                    self.prev_green_lane = None
-                    self.emergency_corridor_lane = None
-                    self.emergency_frames = 0
+                else:  # ALL_RED -> back to adaptive control (subclass-aware)
+                    self.resume_adaptive()
             return
 
         # Normal control: advance a GREEN -> YELLOW -> ALL_RED -> NEXT_GREEN sequence.

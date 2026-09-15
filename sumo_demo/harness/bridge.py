@@ -147,12 +147,13 @@ class FalconBridge:
                             emergency_hook["emergency_start_step"] + emergency_hook["corridor_clearance_s"]
                         )
 
-                    if controller.mode == "ADAPTIVE":
+                    if controller.mode != "EMERGENCY":
                         if recovery_begin_step is not None:
                             emergency_hook["recovery_time_s"] = step - recovery_begin_step
                         self.emergency_hooks.append(emergency_hook)
                         emergency_hook_open = False
                         in_transition = False
+                        pending_lane = None
 
             elif in_transition:
                 controller.tick(self.fps)

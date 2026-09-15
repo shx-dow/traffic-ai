@@ -57,11 +57,29 @@ def main() -> int:
                 f"{rep.avg_wait_s:>7.1f}s {rep.max_queue:>5} "
                 f"{rep.avg_queue:>6.1f} {rep.vehicles_served:>7} {rep.vehicles_arrived:>8}"
             )
+            _print_emergency(rep)
         if adaptive.avg_wait_s > 0 and baseline.avg_wait_s > 0:
             delta = (baseline.avg_wait_s - adaptive.avg_wait_s) / baseline.avg_wait_s * 100
             print(f"             {'D%':<10} {delta:>+6.1f}%")
         print()
     return 0
+
+
+def _print_emergency(rep: MetricsReport) -> None:
+    """Print emergency corridor timing metrics, when present."""
+    fields = (
+        ("t_preempt", "time_to_preemption_s"),
+        ("t_clear", "corridor_clearance_s"),
+        ("t_preempt_dur", "preemption_duration_s"),
+        ("t_recover", "recovery_time_s"),
+    )
+    pieces = []
+    for label, name in fields:
+        value = getattr(rep, name, None)
+        if value is not None:
+            pieces.append(f"{label}={value}s")
+    if pieces:
+        print(f"             {'EMERG':<10} {' '.join(pieces)}")
 
 
 if __name__ == "__main__":

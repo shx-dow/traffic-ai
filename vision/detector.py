@@ -3,11 +3,9 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
-from ultralytics import YOLO
-from ultralytics.engine.results import Results
 
 VEHICLE_CLASSES = frozenset({"car", "truck", "bus", "motorcycle", "bicycle"})
 EMERGENCY_CLASS_NAMES = frozenset({"ambulance", "fire_truck"})
@@ -15,7 +13,7 @@ TRACKED_CLASSES = VEHICLE_CLASSES | EMERGENCY_CLASS_NAMES
 CONFIDENCE_THRESHOLD = 0.4
 
 # Type alias for a single detection dict
-Detection = Dict[str, Any]
+Detection = dict[str, Any]
 
 
 class VehicleDetector:
@@ -25,18 +23,28 @@ class VehicleDetector:
         self,
         model_path: str = "yolov8n.pt",
         *,
-        enrich_cross_dataset: Optional[bool] = None,
-        ambulance_mode: Optional[str] = None,
-        ambulance_confidence: Optional[float] = None,
-        confirm_vision_frames: Optional[int] = None,
-        vision_grace_frames: Optional[int] = None,
+        enrich_cross_dataset: bool | None = None,
+        ambulance_mode: str | None = None,
+        ambulance_confidence: float | None = None,
+        confirm_vision_frames: int | None = None,
+        vision_grace_frames: int | None = None,
     ) -> None:
-        from config import (AMBULANCE_AUX_MODEL_PATH, AMBULANCE_CONFIDENCE,
-                            AMBULANCE_CUSTOM_MODEL_PATH,
-                            AMBULANCE_DETECTION_MODE,
-                            AMBULANCE_WORLD_CONFIDENCE, AMBULANCE_WORLD_MODEL,
-                            DETECTOR_ENRICH_CROSS_DATASET,
-                            VISION_CONFIRM_FRAMES, VISION_GRACE_FRAMES)
+        # Ultralytics is imported lazily so that importing this module (and
+        # running detector unit tests that use synthetic fallbacks) does not
+        # require the ~hundreds of MB torch/ultralytics install.
+        from ultralytics import YOLO
+
+        from config import (
+            AMBULANCE_AUX_MODEL_PATH,
+            AMBULANCE_CONFIDENCE,
+            AMBULANCE_CUSTOM_MODEL_PATH,
+            AMBULANCE_DETECTION_MODE,
+            AMBULANCE_WORLD_CONFIDENCE,
+            AMBULANCE_WORLD_MODEL,
+            DETECTOR_ENRICH_CROSS_DATASET,
+            VISION_CONFIRM_FRAMES,
+            VISION_GRACE_FRAMES,
+        )
 
         self._model = YOLO(model_path)
         self._logger = logging.getLogger(__name__)
@@ -46,9 +54,9 @@ class VehicleDetector:
         self._ambulance_world_conf = float(AMBULANCE_WORLD_CONFIDENCE)
         self._world_weights = AMBULANCE_WORLD_MODEL
         self._world_model: Any = None
-        self._ambulance_custom: Optional[YOLO] = None
-        self._ambulance_aux: Optional[YOLO] = None
-        self._gps_cache: Dict[str, Any] = {
+        self._ambulance_custom: Any | None = None
+        self._ambulance_aux: Any | None = None
+        self._gps_cache: dict[str, Any] = {
             "emergency": False,
             "vehicle_id": None,
             "distance_km": None,
@@ -80,7 +88,7 @@ class VehicleDetector:
 
     # Public API
 
-    def detect(self, frame: np.ndarray, *, video_source_hint: Optional[str] = None) -> Dict[str, Any]:
+    def detect(self, frame: np.ndarray, *, video_source_hint: str | None = None) -> dict[str, Any]:
         """
         Input  : BGR numpy array (OpenCV frame)
         Output : {vehicles, count, vision_emergency, gps_emergency, emergency, raw_result, [fusion]}
@@ -88,7 +96,7 @@ class VehicleDetector:
         if not isinstance(frame, np.ndarray):
             raise TypeError("frame must be a numpy ndarray (OpenCV BGR image).")
 
-        raw_result: Results = self._model.predict(source=frame, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
+        raw_result = self._model.predict(source=frame, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
         vehicles, vision_emergency = self._vehicles_from_coco(raw_result)
         vehicles, vision_emergency = self._merge_ambulance_detections(frame, vehicles, vision_emergency)
         vision_emergency = self._temporal_confirm(bool(vision_emergency))
@@ -143,8 +151,8 @@ class VehicleDetector:
         self._vision_grace = grace
         return confirmed
 
-    def _vehicles_from_coco(self, raw_result: Results) -> Tuple[List[Detection], bool]:
-        vehicles: List[Detection] = []
+    def _vehicles_from_coco(self, raw_result) -> tuple[list[Detection], bool]:
+        vehicles: list[Detection] = []
         if not raw_result.boxes:
             return vehicles, False
         for box in raw_result.boxes:
@@ -162,8 +170,8 @@ class VehicleDetector:
         return vehicles, any(v["class"] in EMERGENCY_CLASS_NAMES for v in vehicles)
 
     def _merge_ambulance_detections(
-        self, frame: np.ndarray, vehicles: List[Detection], emergency: bool
-    ) -> Tuple[List[Detection], bool]:
+        self, frame: np.ndarray, vehicles: list[Detection], emergency: bool
+    ) -> tuple[list[Detection], bool]:
         if self._ambulance_mode == "none":
             return vehicles, emergency
 
@@ -182,8 +190,8 @@ class VehicleDetector:
         return vehicles, emergency
 
     def _run_ambulance_model(
-        self, frame: np.ndarray, vehicles: List[Detection], model: YOLO, conf: float
-    ) -> Tuple[List[Detection], bool]:
+        self, frame: np.ndarray, vehicles: list[Detection], model, conf: float
+    ) -> tuple[list[Detection], bool]:
         """Run any YOLO ambulance model and merge results, deduplicating by IoU."""
         try:
             result = model.predict(source=frame, conf=conf, verbose=False)[0]
@@ -191,7 +199,7 @@ class VehicleDetector:
             self._logger.warning("Ambulance model prediction failed: %s", e)
             return vehicles, False
 
-        emergency_boxes: List[Detection] = []
+        emergency_boxes: list[Detection] = []
         for box in (result.boxes or []):
             cls_label = str(result.names[int(box.cls[0].item())]).lower()
             normalized = self._normalize_emergency_label(cls_label)
@@ -211,7 +219,7 @@ class VehicleDetector:
         filtered = [v for v in vehicles if not any(self._iou(v["bbox"], e["bbox"]) > 0.5 for e in emergency_boxes)]
         return filtered + emergency_boxes, True
 
-    def _run_yolo_world(self, frame: np.ndarray, vehicles: List[Detection]) -> Tuple[List[Detection], bool]:
+    def _run_yolo_world(self, frame: np.ndarray, vehicles: list[Detection]) -> tuple[list[Detection], bool]:
         try:
             from ultralytics import YOLOWorld
             if self._world_model is None:
@@ -222,7 +230,7 @@ class VehicleDetector:
             self._logger.debug("YOLOWorld unavailable or failed")
             return vehicles, False
 
-        emergency_boxes: List[Detection] = []
+        emergency_boxes: list[Detection] = []
         for box in (result.boxes or []):
             cls_label = str(result.names[int(box.cls[0].item())]).lower()
             normalized = self._normalize_emergency_label(cls_label)
@@ -258,7 +266,7 @@ class VehicleDetector:
     # Geometry
 
     @staticmethod
-    def _iou(b1: List[float], b2: List[float]) -> float:
+    def _iou(b1: list[float], b2: list[float]) -> float:
         xi1, yi1 = max(b1[0], b2[0]), max(b1[1], b2[1])
         xi2, yi2 = min(b1[2], b2[2]), min(b1[3], b2[3])
         inter = max(0.0, xi2 - xi1) * max(0.0, yi2 - yi1)
@@ -269,12 +277,11 @@ class VehicleDetector:
 
     # GPS emergency check
 
-    def _check_gps_emergency(self) -> Dict[str, Any]:
+    def _check_gps_emergency(self) -> dict[str, Any]:
         try:
             import requests
 
-            from config import (GPS_POLL_INTERVAL_SECONDS,
-                                GPS_REQUEST_TIMEOUT_SECONDS, GPS_SERVER_URL)
+            from config import GPS_POLL_INTERVAL_SECONDS, GPS_REQUEST_TIMEOUT_SECONDS, GPS_SERVER_URL
 
             now = time.monotonic()
             if now - self._gps_last_poll_ts < GPS_POLL_INTERVAL_SECONDS:
@@ -298,14 +305,12 @@ class VehicleDetector:
 
     # Cross-dataset fusion (optional)
 
-    def _attach_fusion(self, out: Dict[str, Any], video_source_hint: Optional[str]) -> Dict[str, Any]:
+    def _attach_fusion(self, out: dict[str, Any], video_source_hint: str | None) -> dict[str, Any]:
         if not self._enrich_cross_dataset:
             return out
         try:
-            from config import (FINDVEHICLE_SCHEMA_NAME,
-                                VISION_TRAFFIC_DATASET_NAME)
-            from data.coco_findvehicle_bridge import \
-                attach_cross_dataset_fusion
+            from config import FINDVEHICLE_SCHEMA_NAME, VISION_TRAFFIC_DATASET_NAME
+            from data.coco_findvehicle_bridge import attach_cross_dataset_fusion
             attach_cross_dataset_fusion(out, vision_dataset=VISION_TRAFFIC_DATASET_NAME, text_dataset=FINDVEHICLE_SCHEMA_NAME, video_source_hint=video_source_hint)
         except Exception as e:
             self._logger.debug("Cross-dataset fusion unavailable: %s", e)

@@ -15,11 +15,9 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from logic.signal import SignalController
 from sumo_demo.harness.bridge import FalconBridge, StepRecord, make_controller
 from sumo_demo.harness.sinks import NullSignalSink
 from sumo_demo.harness.traffic import Scenario, ScenarioTrafficSource
@@ -50,13 +48,13 @@ def _run(scenario: Scenario = _TEMPORAL_EMERGENCY, seed: int = 7, steps: int = 1
     return bridge.run(make_controller("adaptive"), total_steps=steps)
 
 
-def _greens(rec: StepRecord) -> List[str]:
+def _greens(rec: StepRecord) -> list[str]:
     return [l for l in LANES if rec.signal_state.get(l) == "GREEN"]
 
 
-def _emergency_blocks(records: List[StepRecord]) -> List[Tuple[int, int, str, str]]:
+def _emergency_blocks(records: list[StepRecord]) -> list[tuple[int, int, str, str]]:
     """Collapse consecutive EMERGENCY steps into (start, end, emergency_state, corridor)."""
-    blocks: List[Tuple[int, int, str, str]] = []
+    blocks: list[tuple[int, int, str, str]] = []
     for rec in records:
         if rec.mode != "EMERGENCY":
             continue

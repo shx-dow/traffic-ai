@@ -8,13 +8,20 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 import cv2
 
-from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
-                    EMERGENCY_LATCH_SECONDS, MODEL_PATH,
-                    VISION_CONFIRM_FRAMES, VISION_GRACE_FRAMES)
+from config import (
+    BASELINE_GREEN_SECONDS,
+    CONFIG,
+    DEFAULT_SIGNAL_MODE,
+    EMERGENCY_LATCH_SECONDS,
+    MODEL_PATH,
+    VISION_CONFIRM_FRAMES,
+    VISION_GRACE_FRAMES,
+)
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.live_metrics import LiveMetricsTracker
@@ -22,8 +29,7 @@ from logic.orchestrator import CorridorOrchestrator
 from logic.roi import parse_rect_roi
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
-from logic.signal_state import (SignalStateSensor, parse_roi_arg,
-                                resolve_signal_reading)
+from logic.signal_state import SignalStateSensor, parse_roi_arg, resolve_signal_reading
 from logic.traffic_loop import build_signal_summary, is_balanced
 from ui.overlay import TrafficOverlay
 from utils.helpers import run_repo_pipeline
@@ -47,6 +53,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--headless", action="store_true",
                     help="Run without opening a display window (useful for CI)")
     p.add_argument("--max-frames", type=int, default=0, help="Stop after N frames (0 means no limit)")
+    p.add_argument("--infer-every", type=int, default=1,
+                   help="Run YOLO inference every N frames (1 = every frame); "
+                        "frames in between reuse the last detections")
+    p.add_argument("--reconnect", action="store_true",
+                   help="Keep retrying to open the capture after read() fails "
+                        "(keeps a flaky webcam stream alive)")
     p.add_argument("--save-output", action="store_true", default=CONFIG.get("save_output", False))
     p.add_argument("--output-path", default=CONFIG.get("output_path", "artifacts/demo_output.mp4"))
     p.add_argument("--run-pipeline", action="store_true", help="Run core repo validation checks before main loop")
@@ -161,10 +173,8 @@ def main() -> None:
     # Setup graceful shutdown handlers
     ge = GracefulExit()
     signal.signal(signal.SIGINT, ge)
-    try:
+    with suppress(AttributeError, ValueError):
         signal.signal(signal.SIGTERM, ge)
-    except (AttributeError, ValueError):
-        pass
 
     cap = open_capture(args.video_source)
     if not cap.isOpened():
@@ -208,6 +218,8 @@ def main() -> None:
     active_lane = lanes[0]
     frame_counter = 0
     processed_frames = 0
+    frame_no = 0
+    last_detection = None
     vision_hold_frames = 0
     last_corridor_lane = args.camera_lane
     manual_emergency = False
@@ -254,10 +266,29 @@ def main() -> None:
     while not ge.exit and cap.isOpened():
         ret, frame = cap.read()
         if not ret:
+            # Hardening: a flaky camera can drop a frame or EOF spuriously.
+            if args.reconnect:
+                LOGGER.warning("Capture read failed — reopening source %r", args.video_source)
+                cap.release()
+                for attempt in range(30):
+                    cap = open_capture(args.video_source)
+                    if cap is not None and cap.isOpened():
+                        LOGGER.info("Capture re-opened on attempt %d", attempt + 1)
+                        break
+                    time.sleep(1)
+                else:
+                    LOGGER.error("Gave up after 30 reconnect attempts")
+                    break
+                continue
             LOGGER.info("End of stream or cannot read frame")
             break
 
-        detection = detector.detect(frame)
+        # Inference throttle: run YOLO every `infer_every` frames, reuse the
+        # last detections in between. Saves most of the per-frame ML cost.
+        if frame_no % max(1, args.infer_every) == 0 or last_detection is None:
+            last_detection = detector.detect(frame)
+        detection = last_detection
+        frame_no += 1
 
         lane_counts = counter.count_per_lane(detection["vehicles"])
         lane_scores = compute_lane_scores_for_runtime(

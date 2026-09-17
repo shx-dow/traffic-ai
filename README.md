@@ -1,5 +1,7 @@
 # AI Traffic Flow Optimizer and Emergency Green Corridor
 
+![CI](https://github.com/shx-dow/traffic-ai/actions/workflows/ci.yml/badge.svg)
+
 ## Scope
 
 This repository implements a judge-ready single-intersection traffic controller with a prototype multi-node pre-clear demo:
@@ -133,13 +135,32 @@ Single-seed head-to-head comparison across all scenarios:
 python -m sumo_demo.evaluate --steps 900 --seed 42
 ```
 
-Multi-seed benchmark with mean/std aggregation and persistent JSON artifact:
+Multi-seed benchmark with mean/std aggregation, fair explicit fixed-time
+baseline, verdict per scenario, and a persistent JSON artifact:
 
 ```bash
 python -m sumo_demo.benchmark --steps 600 --seeds 42 43 44 45 46
 ```
 
+- The fixed-time baseline green is explicit (default 13 s) so the comparison
+  never silently shifts.
+- Additional controller arms can be benchmarked side by side:
+
+```bash
+python -m sumo_demo.benchmark --controllers baseline adaptive actuated fusion
+```
+
+  toggles `actuated` (gap-out) and `fusion` (backlog + arrival rate) arms.
+
 Output file: `profiling/artifacts/benchmark_results.json`
+
+Parameter sensitivity sweeps (writes `profiling/artifacts/ablation_*.json`):
+
+```bash
+python -m sumo_demo.benchmark --ablate switch_gap_relative
+python -m sumo_demo.benchmark --ablate baseline_green
+python -m sumo_demo.benchmark --ablate fusion_weight
+```
 
 Emergency corridor timing (time_to_preemption, corridor_clearance, recovery_time)
 is surfaced automatically when the scenario contains an emergency event.
@@ -186,6 +207,16 @@ python tests/test_traci_slotin.py       # mapping / state-string / XML shape tes
 python tests/test_traci_loop.py         # full bridge loop against a FakeTraCI stub
 python tests/test_emergency_temporal.py # preemption timing, corridor isolation, recovery
 python tests/test_benchmark.py          # multi-seed aggregation + JSON artifact
+python tests/test_emergency_edgecases.py # corner-case preemption matrix
+python tests/test_invariants_fuzz.py     # Hypothesis state-machine invariant fuzzing
+python tests/test_validate_detector.py   # detector ground-truth metric core
+```
+
+Run the whole suite and lint the same way CI does:
+
+```bash
+python -m pytest -q
+ruff check .
 ```
 
 ## SUMO Demo (optional)

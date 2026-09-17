@@ -7,8 +7,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from logic.signal_state import (SignalStateSensor, parse_roi_arg,
-                                resolve_signal_reading)
+from logic.signal_state import SignalStateSensor, parse_roi_arg, resolve_signal_reading
 
 
 def test_parse_roi_arg_parses_coordinates():

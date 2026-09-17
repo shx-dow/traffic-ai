@@ -5,8 +5,7 @@ import json
 from collections import Counter
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, List
-
+from typing import Any
 
 LANES = ("north", "south", "east", "west")
 
@@ -21,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _read_json(path: Path) -> Dict[str, Any] | None:
+def _read_json(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
@@ -30,10 +29,10 @@ def _read_json(path: Path) -> Dict[str, Any] | None:
         return None
 
 
-def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     try:
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
@@ -49,7 +48,7 @@ def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
     return rows
 
 
-def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def summarize_live_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not rows:
         return {
             "frames": 0,
@@ -97,7 +96,7 @@ def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def summarize_benchmark(benchmark: Dict[str, Any] | None) -> Dict[str, Any]:
+def summarize_benchmark(benchmark: dict[str, Any] | None) -> dict[str, Any]:
     if not benchmark:
         return {"wait_reduction_pct": None, "throughput_gain_pct": None}
     comp = benchmark.get("comparison", {})
@@ -107,7 +106,7 @@ def summarize_benchmark(benchmark: Dict[str, Any] | None) -> Dict[str, Any]:
     }
 
 
-def summarize_orchestrator(orchestrator: Dict[str, Any] | None) -> Dict[str, Any]:
+def summarize_orchestrator(orchestrator: dict[str, Any] | None) -> dict[str, Any]:
     if not orchestrator:
         return {"final_emergency_nodes": None, "route": None}
     events = orchestrator.get("events", [])
@@ -122,7 +121,7 @@ def summarize_orchestrator(orchestrator: Dict[str, Any] | None) -> Dict[str, Any
     }
 
 
-def calculate_green_red_split(avg_lane_counts: Dict[str, float] | None) -> Dict[str, Any]:
+def calculate_green_red_split(avg_lane_counts: dict[str, float] | None) -> dict[str, Any]:
     if not avg_lane_counts:
         return {"greens": None, "reds": None, "cycle_seconds": None}
 
@@ -146,9 +145,9 @@ def calculate_green_red_split(avg_lane_counts: Dict[str, float] | None) -> Dict[
 
 def render_markdown(
     *,
-    live: Dict[str, Any],
-    benchmark: Dict[str, Any],
-    orchestrator: Dict[str, Any],
+    live: dict[str, Any],
+    benchmark: dict[str, Any],
+    orchestrator: dict[str, Any],
     output_video: str,
     metrics_log: str,
     benchmark_path: str,

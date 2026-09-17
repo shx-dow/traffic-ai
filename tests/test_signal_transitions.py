@@ -12,7 +12,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from logic.signal import SignalController
 
-
 LANES = ("north", "south", "east", "west")
 
 

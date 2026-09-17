@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, field
-from typing import Dict, Generator, Optional, Tuple
-
+from collections.abc import Generator
+from dataclasses import dataclass
 
 LANES = ("north", "south", "east", "west")
 
@@ -26,8 +25,8 @@ class TrafficSnapshot:
     ambulance route), or None.
     """
     step: int
-    lane_counts: Dict[str, int]
-    emergency_lane: Optional[str] = None
+    lane_counts: dict[str, int]
+    emergency_lane: str | None = None
 
 
 class TrafficSource:
@@ -46,11 +45,11 @@ class Scenario:
     `emergency_lane`.
     """
     name: str
-    flows_per_hour: Dict[str, float]
-    surge_window: Optional[Tuple[int, int]] = None
+    flows_per_hour: dict[str, float]
+    surge_window: tuple[int, int] | None = None
     surge_multiplier: float = 3.0
-    emergency_lane: Optional[str] = None
-    emergency_window: Optional[Tuple[int, int]] = None
+    emergency_lane: str | None = None
+    emergency_window: tuple[int, int] | None = None
 
 
 SCENARIOS = {
@@ -114,7 +113,7 @@ class ScenarioTrafficSource(TrafficSource):
                 start, end = self.scenario.surge_window
                 if start <= step < end:
                     surge = self.scenario.surge_multiplier
-            counts: Dict[str, int] = {}
+            counts: dict[str, int] = {}
             for lane in LANES:
                 counts[lane] = _poisson(rng, per_second[lane] * surge)
 

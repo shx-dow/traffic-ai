@@ -30,6 +30,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   baseline recovery assertions.
 - **FakeTraCI validation** (`tests/test_traci_loop.py`): drives the full bridge
   loop against a stubbed TraCI API without real SUMO.
+- **Fair explicit baseline green:** `--baseline-green 13` (default 13 s) in the
+  benchmark instead of the silent library default; benchmark numbers
+  regenerated on this basis.
+- **Controller arms:** actuated gap-out (`logic/actuated_signal.py`) and
+  queue-plus-arrival fusion (`logic/fusion_signal.py`) controllers, selectable
+  via `--controllers baseline adaptive actuated fusion`.
+- **Ablation sweeps:** `--ablate` benchmark mode writing
+  `profiling/artifacts/ablation_*.json` (switch gap, baseline green, fusion
+  weight, green bounds).
+- **Hypothesis invariant fuzzing** (`tests/test_invariants_fuzz.py`): safety
+  contract checked over randomized demand + emergency plans for all four arms.
+- **Emergency corner-case matrix** (`tests/test_emergency_edgecases.py`):
+  preemption mid-transition, corridor == green lane, re-trigger during recovery,
+  step-0 / final-step ambulance, sequential two-corridor runs.
+- **Detector ground-truth scorer** (`scripts/validate_detector.py` +
+  `tests/test_validate_detector.py`): MAE/RMSE/tolerance/bias vs labelled
+  frame counts.
+- **Lazy ultralytics import** in `vision/detector.py`: detector code imports
+  and unit-tests without the torch/ultralytics stack (CI-light).
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): pytest + ruff.
+- **Reproduce pipeline** (`Makefile` targets), `pyproject.toml`
+  (ruff/mypy/pytest config), and `main.py --infer-every` / `--reconnect`.
 
 ### Changed
 - Refactored codebase to organize imports and enhance overall code readability across multiple files.
@@ -42,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the JSON artifact and prints them inline.
 - `tests/test_detector.py` auto-falls back to the synthetic frame benchmark when
   no camera, video, or webcam is available — no longer reports FAIL in CI.
+- Benchmark results re-aligned to the fair explicit 13 s baseline; the new
+  controller arms land between the fixed-time and adaptive extremes.
 
 ### Fixed
 - Fixed `.gitignore` to properly exclude environment, cache, and large unnecessary files.
@@ -57,7 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or 70% of the proportional green budget served (`GAP_EARLY_EXIT_MIN_SERVICE_FRAC=0.7`),
   with a relative gap floor (`SWITCH_GAP_RELATIVE=0.3`) so large queues do not
   trigger constant lane flips.
+- **Mode-whitelist transition stall** (`logic/signal.py`): `is_transitioning`
+  only recognized `ADAPTIVE`/`BASELINE`, which left the actuated and fusion arms
+  pinned in YELLOW with zero throughput. Generalized to any non-emergency mode.
+- Ruff lint clean repo, including a previously silent `Circle`/`Rectangle`
+  annotation-only missing import.
 
 ### Documentation
 - Added comprehensive GPS documentation and analysis scripts.
 - Updated `README.md` with detailed information regarding models and dataset tracking.
+- README now documents the controller arms, ablation sweeps, CI, and the
+  pytest/ruff verification commands.

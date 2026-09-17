@@ -1,10 +1,10 @@
 
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 
 def attach_cross_dataset_fusion(
-    out: Dict[str, Any],
+    out: dict[str, Any],
     *,
     vision_dataset: str,
     text_dataset: str,

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple
 
-
-def parse_rect_roi(value: str) -> Optional[Tuple[int, int, int, int]]:
+def parse_rect_roi(value: str) -> tuple[int, int, int, int] | None:
     raw = str(value or "").strip()
     if not raw:
         return None

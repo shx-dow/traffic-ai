@@ -9,11 +9,10 @@ the traffic comes from the synthetic source or, later, a TraCI source.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
-from .traffic import TrafficSource
-from .sinks import SignalSink
 from .metrics import MetricsReport
+from .sinks import SignalSink
+from .traffic import TrafficSource
 
 
 @dataclass
@@ -23,15 +22,15 @@ class StepRecord:
     phase: str
     emergency_state: str
     active_lane: str
-    signal_state: Dict[str, str]
-    arrivals: Dict[str, int]
-    emergency_lane: Optional[str]
+    signal_state: dict[str, str]
+    arrivals: dict[str, int]
+    emergency_lane: str | None
 
 
 @dataclass
 class BridgeResult:
-    records: List[StepRecord] = field(default_factory=list)
-    emergency_hooks: List[Dict[str, int]] = field(default_factory=list)
+    records: list[StepRecord] = field(default_factory=list)
+    emergency_hooks: list[dict[str, int]] = field(default_factory=list)
 
     def report(self, scenario: str, controller: str, sink: SignalSink, total_steps: int) -> MetricsReport:
         emergency = {}
@@ -53,13 +52,24 @@ class BridgeResult:
 
 
 def make_controller(mode: str, **kwargs):
-    """Build a Falcon controller: 'adaptive' (SignalController) or 'baseline'
-    (BaselineSignalController, fixed-time)."""
-    from logic.signal import SignalController
+    """Build a Falcon controller by mode name.
+
+    - 'adaptive'  : SignalController (queue-proportional green allocation)
+    - 'baseline'  : BaselineSignalController (fixed-time)
+    - 'actuated'  : ActuatedSignalController (gap-out)
+    - 'fusion'    : FusionSignalController (backlog + arrival rate)
+    """
+    from logic.actuated_signal import ActuatedSignalController
     from logic.baseline_signal import BaselineSignalController
+    from logic.fusion_signal import FusionSignalController
+    from logic.signal import SignalController
 
     if mode == "baseline":
         return BaselineSignalController(**kwargs)
+    if mode == "actuated":
+        return ActuatedSignalController(**kwargs)
+    if mode == "fusion":
+        return FusionSignalController(**kwargs)
     return SignalController()
 
 
@@ -75,18 +85,18 @@ class FalconBridge:
         self.source = source
         self.sink = sink
         self.fps = fps
-        self.emergency_hooks: List[Dict[str, int]] = []
+        self.emergency_hooks: list[dict[str, int]] = []
 
     def run(self, controller, total_steps: int) -> BridgeResult:
         active_lane = "north"
         frame_counter = 0
-        pending_lane: Optional[str] = None
+        pending_lane: str | None = None
         in_transition = False
         emergency_hook_open = False
         preemption_hit = False
-        recovery_begin_step: Optional[int] = None
+        recovery_begin_step: int | None = None
 
-        records: List[StepRecord] = []
+        records: list[StepRecord] = []
         for snap in self.source.steps(total_steps):
             step = snap.step
             lane_counts = snap.lane_counts
@@ -97,6 +107,15 @@ class FalconBridge:
             # synthetic sink exposes measured queues; a TraCI sink would too.
             observed = getattr(self.sink, "observed_counts", None)
             controller_counts = observed() if callable(observed) else lane_counts
+
+            # Fusion arms blend the standing queue with the current arrival
+            # intensity (new vehicles entering the approach this step).
+            if getattr(controller, "uses_arrivals", False):
+                weight = float(getattr(controller, "FUSION_WEIGHT", 1.0))
+                controller_counts = {
+                    lane: float(controller_counts.get(lane, 0)) + weight * float(lane_counts.get(lane, 0))
+                    for lane in lane_counts
+                }
 
             # ---------- emergency entry ----------
             if emergency_lane and controller.mode != "EMERGENCY" and not emergency_hook_open:

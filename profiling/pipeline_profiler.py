@@ -27,15 +27,14 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import numpy as np
 import cv2
+import numpy as np
 
 from config import CONFIG, MODEL_PATH
 from logic.counter import LaneCounter
-from logic.signal import SignalController
 from logic.orchestrator import CorridorOrchestrator
 from logic.runtime import select_corridor_lane
-from logic.traffic_loop import is_balanced
+from logic.signal import SignalController
 from ui.overlay import TrafficOverlay
 from vision.detector import VehicleDetector
 

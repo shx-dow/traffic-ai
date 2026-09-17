@@ -40,7 +40,7 @@ def check_video_file():
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     duration_sec = frame_count / fps if fps > 0 else 0
 
-    print(f"\n📊 Video Properties:")
+    print("\n📊 Video Properties:")
     print(f"   FPS: {fps}")
     print(f"   Frames: {frame_count}")
     print(f"   Resolution: {width}x{height}")

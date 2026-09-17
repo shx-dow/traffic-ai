@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import cv2
 import numpy as np
@@ -20,7 +20,7 @@ class SignalStateSensor:
         *,
         source: str = "none",
         api_url: str = "",
-        roi: Optional[Tuple[int, int, int, int]] = None,
+        roi: tuple[int, int, int, int] | None = None,
         timeout_seconds: float = 0.4,
         min_color_pixels: int = 24,
         min_blob_area: float = 18.0,
@@ -51,7 +51,7 @@ class SignalStateSensor:
 
             r = requests.get(self.api_url, timeout=self.timeout_seconds)
             r.raise_for_status()
-            payload: Dict[str, Any] = r.json()
+            payload: dict[str, Any] = r.json()
             state = str(payload.get("state", "")).upper()
             if state not in {"RED", "YELLOW", "GREEN"}:
                 return None
@@ -94,7 +94,7 @@ class SignalStateSensor:
             return None
         return SignalStateReading(state=best[0], source="video", confidence=confidence)
 
-    def get_effective_roi(self, frame: np.ndarray) -> Tuple[int, int, int, int]:
+    def get_effective_roi(self, frame: np.ndarray) -> tuple[int, int, int, int]:
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = self.roi or (0, 0, max(1, w // 6), max(1, h // 4))
         x1 = max(0, min(w - 1, int(x1)))
@@ -118,7 +118,7 @@ class SignalStateSensor:
         return colored
 
 
-def parse_roi_arg(roi_value: str) -> Optional[Tuple[int, int, int, int]]:
+def parse_roi_arg(roi_value: str) -> tuple[int, int, int, int] | None:
     raw = str(roi_value or "").strip()
     if not raw:
         return None
@@ -134,7 +134,7 @@ def resolve_signal_reading(
     *,
     requested_source: str,
     fallback_mode: str,
-    signal_states: Dict[str, str],
+    signal_states: dict[str, str],
     camera_lane: str,
 ) -> SignalStateReading | None:
     if sensed is not None:

@@ -1,8 +1,6 @@
 
 from __future__ import annotations
 
-from typing import Dict
-
 LANES = ("north", "south", "east", "west")
 
 
@@ -16,7 +14,7 @@ def is_emergency_active(
     return bool(vision_emergency or gps_emergency or manual_trigger)
 
 
-def _normalize_signal_state(signal_state: Dict[str, str] | str) -> Dict[str, str]:
+def _normalize_signal_state(signal_state: dict[str, str] | str) -> dict[str, str]:
     if isinstance(signal_state, dict):
         return {lane: signal_state.get(lane, "RED") for lane in LANES}
 
@@ -28,10 +26,10 @@ def _normalize_signal_state(signal_state: Dict[str, str] | str) -> Dict[str, str
 
 
 def apply_emergency_override(
-    signal_state: Dict[str, str] | str,
+    signal_state: dict[str, str] | str,
     emergency_active: bool,
     corridor_lane: str | None = None,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Return lane-wise RED/GREEN signal state with emergency override."""
     state = _normalize_signal_state(signal_state)
 

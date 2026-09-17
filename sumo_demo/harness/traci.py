@@ -10,12 +10,13 @@ installed (imports are guarded and degrade to None / empty).
 """
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import suppress
 from pathlib import Path
-from typing import Dict, Generator, List, Optional
 
-from .traffic import TrafficSnapshot, TrafficSource
-from .sinks import SignalSink
 from .metrics import MetricsReport
+from .sinks import SignalSink
+from .traffic import TrafficSnapshot, TrafficSource
 
 # --------------------------------------------------------------------------- #
 # SUMO runtime discovery (mirrors sumo_demo.real_traci_runner._import_runtime)
@@ -23,15 +24,15 @@ from .metrics import MetricsReport
 
 def _import_runtime():
     try:
-        import traci  # type: ignore
         import sumolib  # type: ignore
+        import traci  # type: ignore
         del sumolib
         return traci
     except Exception:
         return None
 
 
-def _sumo_binary(gui: bool = False) -> Optional[Path]:
+def _sumo_binary(gui: bool = False) -> Path | None:
     from ..sumo_path import ensure_sumo_home
 
     home = ensure_sumo_home()
@@ -71,7 +72,7 @@ LINK_RANGES = {
 _FAULT_LINK_RANGE = (0, 16)
 
 
-def build_state_string(falcon_state: Dict[str, str], num_links: int = 16) -> str:
+def build_state_string(falcon_state: dict[str, str], num_links: int = 16) -> str:
     """Translate a Falcon signal_state into a SUMO red/green/yellow state string.
 
     Only ONE approach may be GREEN at a time (Falcon's invariant), so the
@@ -97,7 +98,7 @@ def build_state_string(falcon_state: Dict[str, str], num_links: int = 16) -> str
     return "".join(state)
 
 
-def approach_for_lane(lane_id: str) -> Optional[str]:
+def approach_for_lane(lane_id: str) -> str | None:
     """Map a SUMO lane/edge id back to a Falcon approach (B1 grid)."""
     lowered = lane_id.lower()
     for approach, lane in APPROACH_LANES.items():
@@ -123,7 +124,7 @@ class TraciTrafficSource(TrafficSource):
         self,
         traci,
         tls_id: str = "B1",
-        emergency_ids: Optional[List[str]] = None,
+        emergency_ids: list[str] | None = None,
     ):
         self.traci = traci
         self.tls_id = tls_id
@@ -139,16 +140,14 @@ class TraciTrafficSource(TrafficSource):
                 self._num_links = 16
         return self._num_links or 16
 
-    def _lane_counts(self) -> Dict[str, int]:
+    def _lane_counts(self) -> dict[str, int]:
         counts = {approach: 0 for approach in APPROACH_LANES}
         for approach, lane in APPROACH_LANES.items():
-            try:
+            with suppress(Exception):
                 counts[approach] = len(self.traci.lane.getLastStepVehicleIDs(lane))
-            except Exception:
-                pass
         return counts
 
-    def _emergency_lane(self) -> Optional[str]:
+    def _emergency_lane(self) -> str | None:
         try:
             ids = self.traci.vehicle.getIDList()
         except Exception:
@@ -195,22 +194,20 @@ class TraciSignalSink(SignalSink):
     def __init__(self, traci, tls_id: str = "B1"):
         self.traci = traci
         self.tls_id = tls_id
-        self._nums: Dict[str, float] = {l: 0.0 for l in APPROACH_LANES}
-        self._queue_total: Dict[str, float] = {l: 0.0 for l in APPROACH_LANES}
+        self._nums: dict[str, float] = {l: 0.0 for l in APPROACH_LANES}
+        self._queue_total: dict[str, float] = {l: 0.0 for l in APPROACH_LANES}
         self._queue_samples = 0
         self._max_queue = 0
         self._served = 0
 
-    def on_step(self, step: int, signal_state: Dict[str, str], arrivals: Dict[str, int]) -> None:
+    def on_step(self, step: int, signal_state: dict[str, str], arrivals: dict[str, int]) -> None:
         try:
             num_links = len(self.traci.trafficlight.getControlledLanes(self.tls_id))
         except Exception:
             num_links = 16
         state_str = build_state_string(signal_state, num_links)
-        try:
+        with suppress(Exception):
             self.traci.trafficlight.setRedYellowGreenState(self.tls_id, state_str)
-        except Exception:
-            pass
 
         total = 0
         for approach, lane in APPROACH_LANES.items():
@@ -224,12 +221,10 @@ class TraciSignalSink(SignalSink):
         self._queue_samples += 1
         if total > self._max_queue:
             self._max_queue = int(total)
-        try:
+        with suppress(Exception):
             self._served = int(self.traci.simulation.getEndedNumber())
-        except Exception:
-            pass
 
-    def observed_counts(self) -> Dict[str, int]:
+    def observed_counts(self) -> dict[str, int]:
         """Halting vehicles per approach — what a camera ROI would report."""
         return {l: int(self._nums.get(l, 0)) for l in APPROACH_LANES}
 

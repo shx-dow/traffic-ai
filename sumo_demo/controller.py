@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List
-
 
 LANES = ("north", "south", "east", "west")
 
@@ -12,9 +10,9 @@ class SumoStepResult:
     step: int
     mode: str
     active_lane: str
-    green_lanes: List[str]
-    lane_counts: Dict[str, int]
-    lane_scores: Dict[str, float]
+    green_lanes: list[str]
+    lane_counts: dict[str, int]
+    lane_scores: dict[str, float]
     emergency_active: bool
     corridor_lane: str | None = None
 
@@ -29,7 +27,7 @@ class SumoBaselineController:
     def __post_init__(self) -> None:
         self._remaining = int(self.green_seconds)
 
-    def step(self, lane_counts: Dict[str, int]) -> SumoStepResult:
+    def step(self, lane_counts: dict[str, int]) -> SumoStepResult:
         del lane_counts
         self._remaining -= 1
         if self._remaining <= 0:
@@ -56,31 +54,29 @@ class SumoAdaptiveController:
     lanes: tuple[str, ...] = LANES
     _current_lane: str = "north"
     _frame_counter: int = 0
-    _wait_cycles: Dict[str, int] = field(default_factory=lambda: {lane: 0 for lane in LANES})
+    _wait_cycles: dict[str, int] = field(default_factory=lambda: {lane: 0 for lane in LANES})
 
-    def calculate_scores(self, lane_counts: Dict[str, int]) -> Dict[str, float]:
-        scores: Dict[str, float] = {}
+    def calculate_scores(self, lane_counts: dict[str, int]) -> dict[str, float]:
+        scores: dict[str, float] = {}
         for lane in self.lanes:
             scores[lane] = float(lane_counts.get(lane, 0)) + (self._wait_cycles[lane] * self.wait_weight)
         return scores
 
-    def _green_target(self, scores: Dict[str, float]) -> int:
+    def _green_target(self, scores: dict[str, float]) -> int:
         total = sum(scores.values())
         if total <= 0:
             return self.min_green
         share = scores.get(self._current_lane, 0.0) / total
         return max(self.min_green, min(int(self.min_green + share * (self.max_green - self.min_green)), self.max_green))
 
-    def step(self, lane_counts: Dict[str, int]) -> SumoStepResult:
+    def step(self, lane_counts: dict[str, int]) -> SumoStepResult:
         scores = self.calculate_scores(lane_counts)
         target = self._green_target(scores)
         self._frame_counter += 1
 
         best_other = max((lane for lane in self.lanes if lane != self._current_lane), key=lambda lane: scores[lane])
         switch = False
-        if self._frame_counter >= target:
-            switch = True
-        elif scores[best_other] >= scores[self._current_lane] + self.balance_gap:
+        if self._frame_counter >= target or scores[best_other] >= scores[self._current_lane] + self.balance_gap:
             switch = True
 
         if switch:

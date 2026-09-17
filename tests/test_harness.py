@@ -16,18 +16,18 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import random
+
+from sumo_demo.harness.bridge import BridgeResult, FalconBridge, StepRecord, make_controller
+from sumo_demo.harness.metrics import MetricsReport, QueueModel
+from sumo_demo.harness.sinks import NullSignalSink, SyntheticSignalSink
 from sumo_demo.harness.traffic import (
+    SCENARIOS,
     Scenario,
     ScenarioTrafficSource,
     TrafficSnapshot,
-    SCENARIOS,
     _poisson,
 )
-from sumo_demo.harness.sinks import SyntheticSignalSink, NullSignalSink
-from sumo_demo.harness.metrics import QueueModel, MetricsReport, summarize
-from sumo_demo.harness.bridge import FalconBridge, StepRecord, BridgeResult, make_controller
-import random
-
 
 LANES = ("north", "south", "east", "west")
 
@@ -95,10 +95,7 @@ def test_adaptive_responds_to_heavy_demand():
         fps=1,
     )
     result = bridge.run(make_controller("adaptive"), total_steps=300)
-    ns_counts = sum(1 for r in result.records if r.signal_state.get("north") == "GREEN")
-    ns_respective = sum(1 for r in result.records if r.signal_state.get("north") == "GREEN")
     # NS with heavy demand should get at least some green (at least > 10% of steps)
-    total_green = sum(1 for r in result.records if any(v == "GREEN" for v in r.signal_state.values()))
     ns_respective = sum(1 for r in result.records if r.signal_state.get("north") == "GREEN")
     assert ns_respective > 20, f"N-S should get more green, got {ns_respective} of {len(result.records)}"
 
@@ -110,7 +107,6 @@ def test_baseline_rotates_lanes():
         fps=1,
     )
     result = bridge.run(make_controller("baseline", green_seconds=10), total_steps=200)
-    green_lanes = [r.signal_state.get("north") for r in result.records if any(v == "GREEN" for v in r.signal_state.values())]
     # baseline should give green to multiple lanes in 200 steps
     all_active = set()
     for r in result.records:

@@ -6,7 +6,7 @@ status onto the video frame before display.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 import cv2
 
@@ -62,12 +62,12 @@ class TrafficOverlay:
     def draw(
         self,
         frame: Any,
-        detection_result: Dict[str, Any],
-        lane_counts: Dict[str, int],
-        lane_scores: Dict[str, float] | None = None,
-        signal_states: Dict[str, str] | None = None,
+        detection_result: dict[str, Any],
+        lane_counts: dict[str, int],
+        lane_scores: dict[str, float] | None = None,
+        signal_states: dict[str, str] | None = None,
         emergency_active: bool = False,
-        kpi_snapshot: Dict[str, Any] | None = None,
+        kpi_snapshot: dict[str, Any] | None = None,
         show_directional_counts: bool = True,
         camera_lane: str | None = None,
         ui_mode: str = "debug",
@@ -85,7 +85,7 @@ class TrafficOverlay:
             self._draw_emergency_banner(frame)
         return frame
 
-    def _draw_bounding_boxes(self, frame: Any, vehicles: List[Dict[str, Any]], *, show_labels: bool) -> None:
+    def _draw_bounding_boxes(self, frame: Any, vehicles: list[dict[str, Any]], *, show_labels: bool) -> None:
         for v in vehicles:
             bbox = v.get("bbox")
             if not isinstance(bbox, list) or len(bbox) != 4:
@@ -102,9 +102,9 @@ class TrafficOverlay:
     def _draw_lane_counts(
         self,
         frame: Any,
-        lane_counts: Dict[str, int],
+        lane_counts: dict[str, int],
         *,
-        lane_scores: Dict[str, float] | None,
+        lane_scores: dict[str, float] | None,
         show_directional_counts: bool,
         camera_lane: str | None,
     ) -> None:
@@ -134,7 +134,7 @@ class TrafficOverlay:
             text = f"{lane[0].upper()}: {count}"
             self._draw_text(frame, text, pos, scale=0.7, color=(255, 240, 120), thickness=2)
 
-    def _draw_signal_panel(self, frame: Any, signal_states: Dict[str, str], *, per_camera_mode: bool, camera_lane: str | None) -> None:
+    def _draw_signal_panel(self, frame: Any, signal_states: dict[str, str], *, per_camera_mode: bool, camera_lane: str | None) -> None:
         h, w = frame.shape[:2]
         x0 = w - 270
         y0 = 26
@@ -165,7 +165,7 @@ class TrafficOverlay:
         cv2.addWeighted(overlay, 0.35, frame, 0.65, 0, frame)
         self._draw_text(frame, "EMERGENCY MODE", (w // 2 - 130, 28), scale=0.85, color=(255, 255, 255), thickness=2)
 
-    def _draw_kpi_panel(self, frame: Any, kpi_snapshot: Dict[str, Any]) -> None:
+    def _draw_kpi_panel(self, frame: Any, kpi_snapshot: dict[str, Any]) -> None:
         h, _ = frame.shape[:2]
         x0 = 20
         y0 = max(95, h - 185)
@@ -195,7 +195,7 @@ class TrafficOverlay:
     def draw_status_card(
         self,
         frame: Any,
-        lines: List[tuple[str, tuple[int, int, int], float]],
+        lines: list[tuple[str, tuple[int, int, int], float]],
         *,
         x: int = 12,
         y: int = 12,
@@ -226,7 +226,7 @@ class TrafficOverlay:
         self._draw_text(frame, label, (x1, max(18, y1 - 6)), scale=0.55, color=color, thickness=2)
 
 
-def draw_overlay(frame: Any, detections: List[Dict[str, Any]], counts: Dict[str, int], signal_state: str) -> Any:
+def draw_overlay(frame: Any, detections: list[dict[str, Any]], counts: dict[str, int], signal_state: str) -> Any:
     """Backward-compatible wrapper around TrafficOverlay.
 
     For boxes, prefer `VehicleDetector.detect(frame)["raw_result"]` (Ultralytics

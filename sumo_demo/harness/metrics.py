@@ -12,7 +12,6 @@ evaluation needs:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -25,20 +24,20 @@ class MetricsReport:
     avg_queue: float
     vehicles_served: int
     vehicles_arrived: int
-    time_to_preemption_s: Optional[int] = None
-    preemption_duration_s: Optional[int] = None
-    corridor_clearance_s: Optional[int] = None
-    recovery_time_s: Optional[int] = None
-    emergency_corridor_wait_s: Optional[int] = None
+    time_to_preemption_s: int | None = None
+    preemption_duration_s: int | None = None
+    corridor_clearance_s: int | None = None
+    recovery_time_s: int | None = None
+    emergency_corridor_wait_s: int | None = None
 
 
 @dataclass
 class QueueModel:
     lanes: tuple = ("north", "south", "east", "west")
     service_rate: float = 0.5                # vehicles/sec served while GREEN
-    queue: Dict[str, float] = field(default_factory=dict)
-    served: Dict[str, int] = field(default_factory=dict)
-    arrived: Dict[str, int] = field(default_factory=dict)
+    queue: dict[str, float] = field(default_factory=dict)
+    served: dict[str, int] = field(default_factory=dict)
+    arrived: dict[str, int] = field(default_factory=dict)
     queue_seconds: float = 0.0
     max_queue: int = 0
     queue_samples: int = 0
@@ -50,7 +49,7 @@ class QueueModel:
             self.served.setdefault(lane, 0)
             self.arrived.setdefault(lane, 0)
 
-    def step(self, arrivals: Dict[str, int], signal_state: Dict[str, str]) -> None:
+    def step(self, arrivals: dict[str, int], signal_state: dict[str, str]) -> None:
         total_queue = 0.0
         for lane in self.lanes:
             self.queue[lane] += float(arrivals.get(lane, 0))
@@ -69,7 +68,7 @@ class QueueModel:
         if peak > self.max_queue:
             self.max_queue = peak
 
-    def queue_snapshot(self) -> Dict[str, int]:
+    def queue_snapshot(self) -> dict[str, int]:
         return {lane: int(self.queue[lane]) for lane in self.lanes}
 
     def report(self, scenario: str, controller: str, total_steps: int) -> MetricsReport:
@@ -95,7 +94,7 @@ def summarize(
     total_steps: int,
     queue_model: QueueModel,
     *,
-    emergency_events: Optional[Dict[str, int]] = None,
+    emergency_events: dict[str, int] | None = None,
 ) -> MetricsReport:
     """Wrap a QueueModel report with emergency timing events.
 

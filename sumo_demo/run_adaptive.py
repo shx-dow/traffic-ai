@@ -9,8 +9,8 @@ import argparse
 from .harness import (
     SCENARIOS,
     FalconBridge,
-    SyntheticSignalSink,
     ScenarioTrafficSource,
+    SyntheticSignalSink,
     make_controller,
 )
 

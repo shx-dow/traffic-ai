@@ -5,7 +5,6 @@ Usage:  python -m sumo_demo.evaluate [--steps 900]
 from __future__ import annotations
 
 import argparse
-from typing import Dict, List, Tuple
 
 from .harness import (
     SCENARIOS,

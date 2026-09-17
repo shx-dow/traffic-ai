@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from sumo_demo.harness import SCENARIOS
 from sumo_demo.harness.traci import (
     APPROACH_LANES,
     LINK_RANGES,
@@ -32,7 +33,6 @@ from sumo_demo.run_traci import (
     write_route_file,
     write_sumocfg,
 )
-from sumo_demo.harness import SCENARIOS
 
 
 def test_approach_lanes_map_to_b1_grid():

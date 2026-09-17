@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 LANES = ("north", "south", "east", "west")
 
 
-def _normalize_counts(lane_counts: Dict[str, int] | None) -> Dict[str, int]:
+def _normalize_counts(lane_counts: dict[str, int] | None) -> dict[str, int]:
     lane_counts = lane_counts or {}
     return {lane: int(lane_counts.get(lane, 0)) for lane in LANES}
 
 
-def run_signal_simulation(controller: Any, frame_events: List[Dict[str, Any]], fps: int = 30) -> List[Dict[str, Any]]:
+def run_signal_simulation(controller: Any, frame_events: list[dict[str, Any]], fps: int = 30) -> list[dict[str, Any]]:
     active_lane = "north"
     frame_counter = 0
     last_corridor_lane = active_lane
-    history: List[Dict[str, Any]] = []
+    history: list[dict[str, Any]] = []
 
     for event in frame_events:
         lane_counts = _normalize_counts(event.get("lane_counts"))

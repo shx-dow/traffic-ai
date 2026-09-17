@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from typing import Dict, List
-
 LANES = ("north", "south", "east", "west")
 
 
-def compute_metrics(history: List[Dict], fps: int) -> Dict:
+def compute_metrics(history: list[dict], fps: int) -> dict:
     if fps <= 0:
         raise ValueError("fps must be positive")
 
@@ -48,7 +46,7 @@ def compute_metrics(history: List[Dict], fps: int) -> Dict:
     }
 
 
-def compare_metrics(baseline: Dict, adaptive: Dict) -> Dict:
+def compare_metrics(baseline: dict, adaptive: dict) -> dict:
     b_wait = float(baseline.get("avg_wait_seconds_overall", 0.0))
     a_wait = float(adaptive.get("avg_wait_seconds_overall", 0.0))
     b_thr = float(baseline.get("throughput_score", 0.0))

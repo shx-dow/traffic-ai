@@ -141,10 +141,7 @@ class SignalController:
             if gap_exit_allowed:
                 return True
 
-        if frame_counter >= int(self.MAX_GREEN * fps):
-            return True
-
-        return False
+        return frame_counter >= int(self.MAX_GREEN * fps)
 
     def _effective_switch_gap(self, active_score: float) -> float:
         """Balance gap that scales with the active lane's load.
@@ -230,8 +227,12 @@ class SignalController:
 
     @property
     def is_transitioning(self) -> bool:
-        """True while a normal lane change is clearing (YELLOW/ALL_RED)."""
-        return self.mode in ('ADAPTIVE', 'BASELINE') and self.phase != 'GREEN'
+        """True while a normal lane change is clearing (YELLOW/ALL_RED).
+
+        Any non-emergency mode is a signal-control mode with the same phase
+        machine, so subclass mode names do not need to be whitelisted here.
+        """
+        return self.mode != "EMERGENCY" and self.phase != "GREEN"
 
     # ------------------------------------------------------------------ #
     # Emergency control

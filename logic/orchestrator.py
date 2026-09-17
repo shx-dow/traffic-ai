@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 
 @dataclass
 class IntersectionPlan:
     mode: str
-    corridor_lane: Optional[str]
+    corridor_lane: str | None
     hold_frames: int
 
 
 class CorridorOrchestrator:
     def __init__(
         self,
-        intersection_ids: List[str],
+        intersection_ids: list[str],
         *,
         preempt_hops: int = 2,
         latch_frames: int = 45,
@@ -29,16 +28,16 @@ class CorridorOrchestrator:
         self.intersection_ids = list(intersection_ids)
         self.preempt_hops = int(preempt_hops)
         self.latch_frames = int(latch_frames)
-        self._hold_frames: Dict[str, int] = {node: 0 for node in self.intersection_ids}
-        self._corridor_lane: Dict[str, Optional[str]] = {node: None for node in self.intersection_ids}
+        self._hold_frames: dict[str, int] = {node: 0 for node in self.intersection_ids}
+        self._corridor_lane: dict[str, str | None] = {node: None for node in self.intersection_ids}
 
     def update(
         self,
         *,
-        route: Optional[List[str]],
-        position_index: Optional[int],
-        ambulance_lane: Optional[str],
-    ) -> Dict[str, IntersectionPlan]:
+        route: list[str] | None,
+        position_index: int | None,
+        ambulance_lane: str | None,
+    ) -> dict[str, IntersectionPlan]:
         targets = set()
         if route is not None and position_index is not None:
             start = max(0, int(position_index))
@@ -59,8 +58,8 @@ class CorridorOrchestrator:
 
         return self.snapshot()
 
-    def snapshot(self) -> Dict[str, IntersectionPlan]:
-        plan: Dict[str, IntersectionPlan] = {}
+    def snapshot(self) -> dict[str, IntersectionPlan]:
+        plan: dict[str, IntersectionPlan] = {}
         for node in self.intersection_ids:
             hold = self._hold_frames[node]
             lane = self._corridor_lane[node]

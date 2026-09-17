@@ -17,11 +17,9 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Dict, List, Set
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from logic.signal import SignalController
 from sumo_demo.harness.bridge import FalconBridge, make_controller
 from sumo_demo.harness.traci import (
     APPROACH_LANES,
@@ -33,10 +31,10 @@ from sumo_demo.harness.traffic import TrafficSnapshot
 
 
 class _TrafficLight:
-    def __init__(self, owner: "FakeTraCI"):
+    def __init__(self, owner: FakeTraCI):
         self.owner = owner
 
-    def getControlledLanes(self, tls_id: str) -> List[str]:
+    def getControlledLanes(self, tls_id: str) -> list[str]:
         # Return the real B1 link-lane order implied by LINK_RANGES.
         lanes = ["l0", "l1", "l2", "l3", "l4", "l5", "l6", "l7",
                  "l8", "l9", "l10", "l11", "l12", "l13", "l14", "l15"]
@@ -53,10 +51,10 @@ class _TrafficLight:
 
 
 class _Lane:
-    def __init__(self, owner: "FakeTraCI"):
+    def __init__(self, owner: FakeTraCI):
         self.owner = owner
 
-    def getLastStepVehicleIDs(self, lane: str) -> List[str]:
+    def getLastStepVehicleIDs(self, lane: str) -> list[str]:
         return sorted(self.owner.vehicles.get(lane, set()))
 
     def getLastStepHaltingNumber(self, lane: str) -> int:
@@ -64,13 +62,13 @@ class _Lane:
 
 
 class _Vehicle:
-    def __init__(self, owner: "FakeTraCI"):
+    def __init__(self, owner: FakeTraCI):
         self.owner = owner
 
-    def getIDList(self) -> List[str]:
+    def getIDList(self) -> list[str]:
         return list(self.owner.vehicles.values()) if False else self.owner._vehicle_ids_present()
 
-    def _ids(self) -> List[str]:
+    def _ids(self) -> list[str]:
         return self.owner._vehicle_ids_present()
 
     def getLaneID(self, vid: str) -> str:
@@ -84,7 +82,7 @@ class _Vehicle:
 
 
 class _Simulation:
-    def __init__(self, owner: "FakeTraCI"):
+    def __init__(self, owner: FakeTraCI):
         self.owner = owner
 
     def simulationStep(self) -> None:
@@ -113,12 +111,12 @@ class FakeTraCI:
     """Minimal TraCI-substitute exposing the surface the harness touches."""
 
     def __init__(self):
-        self.vehicles: Dict[str, Set[str]] = {l: set() for l in APPROACH_LANES.values()}
-        self.ended: List[str] = []
-        self.waiting_seconds: Dict[str, float] = {}
-        self.state_history: List[str] = []
+        self.vehicles: dict[str, set[str]] = {l: set() for l in APPROACH_LANES.values()}
+        self.ended: list[str] = []
+        self.waiting_seconds: dict[str, float] = {}
+        self.state_history: list[str] = []
         self.green_approach: str | None = None
-        self.controlled_lanes: List[str] = []
+        self.controlled_lanes: list[str] = []
         self.trafficlight = _TrafficLight(self)
         self.lane = _Lane(self)
         self.vehicle = _Vehicle(self)
@@ -131,8 +129,8 @@ class FakeTraCI:
                 return approach
         return None
 
-    def _vehicle_ids_present(self) -> List[str]:
-        ids: Set[str] = set()
+    def _vehicle_ids_present(self) -> list[str]:
+        ids: set[str] = set()
         for parked in self.vehicles.values():
             ids |= parked
         return sorted(ids)

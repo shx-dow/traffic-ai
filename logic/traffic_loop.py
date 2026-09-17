@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable
+from collections.abc import Iterable
 
 
-def build_signal_summary(signal_states: Dict[str, str]) -> str:
+def build_signal_summary(signal_states: dict[str, str]) -> str:
     greens = [lane for lane, state in signal_states.items() if str(state).upper() == "GREEN"]
     if len(greens) == 4:
         return "ALL_GREEN"

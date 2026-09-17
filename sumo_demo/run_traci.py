@@ -21,9 +21,9 @@ from pathlib import Path
 from .harness import (
     SCENARIOS,
     FalconBridge,
-    make_controller,
     ScenarioTrafficSource,
     SyntheticSignalSink,
+    make_controller,
 )
 from .harness.traci import (
     TraciSignalSink,

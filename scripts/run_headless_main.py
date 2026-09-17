@@ -75,10 +75,9 @@ def run(frames: int = 60) -> None:
             emergency.activate(["int_1"])  # simulated corridor ids
 
         if signal.mode == "EMERGENCY":
-            signal_states = signal.current_state
+            active_lane = lanes[active_index]
         else:
             active_lane = lanes[active_index]
-            signal_states = signal.get_current_signal_state(active_lane)
 
             frames_needed = green_times.get(active_lane, 15) * 30
             if frame_counter >= frames_needed:

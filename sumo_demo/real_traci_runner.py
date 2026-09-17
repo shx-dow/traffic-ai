@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import time
 from pathlib import Path
-from typing import Dict, List
 
 from .config import SumoDemoConfig
 from .controller import SumoAdaptiveController, SumoBaselineController, SumoStepResult
@@ -13,15 +12,15 @@ from .sumo_path import ensure_sumo_home
 def _import_runtime():
     ensure_sumo_home()
     try:
-        import traci  # type: ignore
         import sumolib  # type: ignore
+        import traci  # type: ignore
         del sumolib
         return traci
     except Exception:
         return None
 
 
-def _write_csv(history: List[SumoStepResult], out_path: str) -> None:
+def _write_csv(history: list[SumoStepResult], out_path: str) -> None:
     path = Path(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -45,7 +44,7 @@ def _write_csv(history: List[SumoStepResult], out_path: str) -> None:
             })
 
 
-def _lane_counts_from_sumo(traci, tls_id: str) -> Dict[str, int]:
+def _lane_counts_from_sumo(traci, tls_id: str) -> dict[str, int]:
     counts = {"north": 0, "south": 0, "east": 0, "west": 0}
     if not tls_id:
         return counts
@@ -83,7 +82,7 @@ def run_real_pre_system(
     out_csv: str | None = None,
     gui: bool = False,
     gui_delay_ms: int = 80,
-) -> List[SumoStepResult]:
+) -> list[SumoStepResult]:
     traci = _import_runtime()
     if traci is None:
         from .traci_runner import run_pre_system
@@ -100,7 +99,7 @@ def run_real_pre_system(
         cmd.extend(["--start", "--quit-on-end", "false", "--delay", str(int(gui_delay_ms))])
     traci.start(cmd)
     controller = SumoBaselineController(green_seconds=20)
-    history: List[SumoStepResult] = []
+    history: list[SumoStepResult] = []
     try:
         tls_id = _detect_tls_id(traci, cfg.baseline_tls_id)
         step = 0
@@ -131,7 +130,7 @@ def run_real_post_system(
     out_csv: str | None = None,
     gui: bool = False,
     gui_delay_ms: int = 80,
-) -> List[SumoStepResult]:
+) -> list[SumoStepResult]:
     traci = _import_runtime()
     if traci is None:
         from .traci_runner import run_post_system
@@ -148,7 +147,7 @@ def run_real_post_system(
         cmd.extend(["--start", "--quit-on-end", "false", "--delay", str(int(gui_delay_ms))])
     traci.start(cmd)
     controller = SumoAdaptiveController()
-    history: List[SumoStepResult] = []
+    history: list[SumoStepResult] = []
     try:
         tls_id = _detect_tls_id(traci, cfg.adaptive_tls_id)
         step = 0

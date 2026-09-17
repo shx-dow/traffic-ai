@@ -7,15 +7,13 @@ dropped in later with the same interface.
 """
 from __future__ import annotations
 
-from typing import Dict, Optional
-
-from .metrics import QueueModel, MetricsReport, summarize
+from .metrics import MetricsReport, QueueModel, summarize
 
 
 class SignalSink:
     """Receives the controller's signal state each step."""
 
-    def on_step(self, step: int, signal_state: Dict[str, str], arrivals: Dict[str, int]) -> None:
+    def on_step(self, step: int, signal_state: dict[str, str], arrivals: dict[str, int]) -> None:
         raise NotImplementedError
 
     def report(self, scenario: str, controller: str, total_steps: int, **emergency) -> MetricsReport:
@@ -28,10 +26,10 @@ class SyntheticSignalSink(SignalSink):
     def __init__(self, service_rate: float = 0.5):
         self.queue_model = QueueModel(service_rate=service_rate)
 
-    def on_step(self, step: int, signal_state: Dict[str, str], arrivals: Dict[str, int]) -> None:
+    def on_step(self, step: int, signal_state: dict[str, str], arrivals: dict[str, int]) -> None:
         self.queue_model.step(arrivals, signal_state)
 
-    def observed_counts(self) -> Dict[str, int]:
+    def observed_counts(self) -> dict[str, int]:
         """Current queue length per approach — what a camera ROI would report."""
         return self.queue_model.queue_snapshot()
 
@@ -45,7 +43,7 @@ class SyntheticSignalSink(SignalSink):
 class NullSignalSink(SignalSink):
     """Fallback sink that measures nothing (e.g. pure smoke runs)."""
 
-    def on_step(self, step: int, signal_state: Dict[str, str], arrivals: Dict[str, int]) -> None:
+    def on_step(self, step: int, signal_state: dict[str, str], arrivals: dict[str, int]) -> None:
         pass
 
     def report(self, scenario: str, controller: str, total_steps: int, **emergency) -> MetricsReport:

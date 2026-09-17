@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List
 
 from config import CAMERA_LAT, CAMERA_LON, EMERGENCY_DISTANCE_KM
 
@@ -14,7 +13,7 @@ def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return 6371.0 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def check_gps_emergency(ambulance_data: List[Dict]) -> bool:
+def check_gps_emergency(ambulance_data: list[dict]) -> bool:
     """Return True if any ambulance in the list is within EMERGENCY_DISTANCE_KM of the camera."""
     for ambulance in ambulance_data:
         try:
@@ -36,7 +35,7 @@ def estimate_eta_seconds(distance_km: float, speed_kmh: float, *, min_speed_kmh:
     return (d / s) * 3600.0
 
 
-def compute_emergency_priority(ambulance_data: List[Dict]) -> Dict[str, float | bool | str | None]:
+def compute_emergency_priority(ambulance_data: list[dict]) -> dict[str, float | bool | str | None]:
     best = {
         "emergency": False,
         "vehicle_id": None,
@@ -71,7 +70,7 @@ def compute_emergency_priority(ambulance_data: List[Dict]) -> Dict[str, float | 
     return best
 
 
-def get_camera_location() -> Dict[str, float]:
+def get_camera_location() -> dict[str, float]:
     return {"lat": CAMERA_LAT, "lon": CAMERA_LON}
 
 

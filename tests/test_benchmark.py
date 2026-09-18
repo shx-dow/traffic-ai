@@ -71,6 +71,27 @@ def test_t_crit_95_matches_table():
     assert benchmark_mod._t_two_tailed_p(10.0, 4) < 0.001
 
 
+def test_wilcoxon_rejects_consistent_shift():
+    diffs = [6.0, 7.0, 5.5, 6.5, 6.0, 7.5, 5.0, 8.0]
+    p = benchmark_mod._wilcoxon_p(diffs)
+    assert p is not None and p < 0.05
+
+
+def test_wilcoxon_tied_and_too_few_within():
+    same = [1.0, -1.0, 1.0, -1.0, 1.0, -1.0]
+    assert benchmark_mod._wilcoxon_p([0.0] * 6) == 1.0
+    assert benchmark_mod._wilcoxon_p([1.0, -1.0, 1.0, -1.0]) is None
+    assert benchmark_mod._wilcoxon_p(same) is not None
+
+
+def test_paired_significance_includes_wilcoxon():
+    ref = {"avg_wait_s": [12.0, 14.0, 13.0, 12.5, 13.5]}
+    cont = {"avg_wait_s": [6.0, 7.0, 5.5, 6.5, 6.0]}
+    st = benchmark_mod.paired_significance(ref, cont)
+    assert st["wilcoxon_p"] is not None
+    assert st["wilcoxon_p"] < 0.05
+
+
 def test_run_benchmark_covers_all_scenarios():
     results = benchmark_mod.run_benchmark(
         sorted(SCENARIOS), steps=60, seeds=[1], service_rate=1.0, green_seconds=13

@@ -2,6 +2,14 @@ from __future__ import annotations
 
 from .bridge import BridgeResult, FalconBridge, StepRecord, make_controller
 from .metrics import MetricsReport, QueueModel, summarize
+from .network import (
+    NetworkHarness,
+    NetworkResult,
+    NetworkScenario,
+    NetworkSignalSink,
+    NetworkStepRecord,
+    NetworkTrafficSource,
+)
 from .sinks import NullSignalSink, SignalSink, SyntheticSignalSink
 from .traffic import (
     SCENARIOS,
@@ -9,6 +17,7 @@ from .traffic import (
     ScenarioTrafficSource,
     TrafficSnapshot,
     TrafficSource,
+    emergency_corridor_variant,
 )
 
 __all__ = [
@@ -17,6 +26,7 @@ __all__ = [
     "TrafficSnapshot",
     "TrafficSource",
     "SCENARIOS",
+    "emergency_corridor_variant",
     "SignalSink",
     "SyntheticSignalSink",
     "NullSignalSink",
@@ -27,4 +37,10 @@ __all__ = [
     "StepRecord",
     "BridgeResult",
     "make_controller",
+    "NetworkScenario",
+    "NetworkTrafficSource",
+    "NetworkSignalSink",
+    "NetworkHarness",
+    "NetworkResult",
+    "NetworkStepRecord",
 ]

@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import random
+import statistics
 
 from sumo_demo.harness.bridge import BridgeResult, FalconBridge, StepRecord, make_controller
 from sumo_demo.harness.metrics import MetricsReport, QueueModel
@@ -27,6 +28,7 @@ from sumo_demo.harness.traffic import (
     ScenarioTrafficSource,
     TrafficSnapshot,
     _poisson,
+    emergency_corridor_variant,
 )
 
 LANES = ("north", "south", "east", "west")
@@ -200,6 +202,77 @@ def test_surge_scenario_emergency_with_emergency_window():
     assert any(s.emergency_lane is None for s in snaps)
 
 
+def test_platoon_source_reproducible_and_bursty():
+    src = ScenarioTrafficSource(SCENARIOS["medium"], seed=7, demand_model="platoon")
+    first = list(src.steps(600))
+    second = list(src.steps(600))
+    assert first == second
+    total_bursts = sum(1 for s in first if max(s.lane_counts.values()) >= 2)
+    assert total_bursts > 0, "platoon demand should produce bursts"
+    for lane in LANES:
+        assert sum(s.lane_counts[lane] for s in first) > 0
+
+
+def test_platoon_mean_rate_matches_flow():
+    src = ScenarioTrafficSource(SCENARIOS["medium"], seed=7, demand_model="platoon")
+    snaps = list(src.steps(3600))
+    north_flow = SCENARIOS["medium"].flows_per_hour["north"]
+    per_hour = sum(s.lane_counts["north"] for s in snaps)
+    assert 0.6 * north_flow < per_hour < 1.4 * north_flow, f"platoon N arrivals/hour={per_hour}"
+
+
+def _bin_dispersion(snaps, lane: str, bin_s: int) -> float:
+    bins = []
+    for i in range(0, len(snaps) - bin_s, bin_s):
+        bins.append(sum(s.lane_counts[lane] for s in snaps[i:i + bin_s]))
+    mean = statistics.mean(bins)
+    return statistics.variance(bins) / mean if mean > 0 else 0.0
+
+
+def test_lognormal_source_reproducible_and_bursty():
+    src = ScenarioTrafficSource(SCENARIOS["medium"], seed=7, demand_model="lognormal")
+    first = list(src.steps(3600))
+    second = list(src.steps(3600))
+    assert first == second, "lognormal demand must be deterministic in the seed"
+    lane = "north"
+    poisson = ScenarioTrafficSource(SCENARIOS["medium"], seed=7, demand_model="poisson")
+    poisson_snaps = list(poisson.steps(3600))
+    # Log-normal headways lengthen the burst structure at cycle timescales:
+    # the 30 s index of dispersion must clearly exceed the Poisson one,
+    # while the 1 s dispersion stays near 1 (fine-scale rate unchanged).
+    disp_ln, disp_po = _bin_dispersion(first, lane, 30), _bin_dispersion(poisson_snaps, lane, 30)
+    assert disp_ln > disp_po + 0.5, f"30s dispersion lognormal={disp_ln:.2f} vs poisson={disp_po:.2f}"
+    assert abs(_bin_dispersion(first, lane, 1) - 1.0) < 0.25
+
+
+def test_lognormal_mean_rate_matches_flow():
+    src = ScenarioTrafficSource(SCENARIOS["medium"], seed=7, demand_model="lognormal")
+    snaps = list(src.steps(3600))
+    north_flow = SCENARIOS["medium"].flows_per_hour["north"]
+    per_hour = sum(s.lane_counts["north"] for s in snaps)
+    assert 0.6 * north_flow < per_hour < 1.4 * north_flow, f"lognormal N arrivals/hour={per_hour}"
+    for lane in LANES:
+        assert sum(s.lane_counts[lane] for s in snaps) > 0
+
+
+def test_lognormal_respects_min_headway():
+    src = ScenarioTrafficSource(SCENARIOS["heavy"], seed=3, demand_model="lognormal",
+                                headway_cv=2.5, min_headway_s=0.4)
+    snaps = list(src.steps(3600))
+    # At the heaviest flow, a 0.4 s headway floor permits at most 3 arrivals
+    # per 1 s step (0.0, 0.4, 0.8); anything more would violate the floor.
+    for lane in LANES:
+        max_step = max(s.lane_counts[lane] for s in snaps)
+        assert max_step <= 3, f"{lane} lane peak {max_step} exceeds 3/s floor capacity"
+
+
+def test_emergency_corridor_variant_each_approach():
+    for lane in ("north", "south", "east", "west"):
+        sc = emergency_corridor_variant(lane)
+        assert sc.emergency_lane == lane
+        assert sc.emergency_window == SCENARIOS["emergency"].emergency_window
+
+
 def test_null_sink_report():
     sink = NullSignalSink()
     sink.on_step(0, {l: "GREEN" for l in LANES}, {l: 0 for l in LANES})
@@ -214,6 +287,11 @@ if __name__ == "__main__":
     test_emergency_scenario_has_window()
     test_baseline_single_green_always()
     test_adaptive_responds_to_heavy_demand()
+    test_platoon_source_reproducible_and_bursty()
+    test_platoon_mean_rate_matches_flow()
+    test_lognormal_source_reproducible_and_bursty()
+    test_lognormal_mean_rate_matches_flow()
+    test_lognormal_respects_min_headway()
     test_baseline_rotates_lanes()
     test_queue_model_drains_on_green()
     test_metrics_report_structure()

@@ -1,7 +1,7 @@
 """benchmark.py — P1-B multi-scenario benchmark (baseline vs adaptive).
 
 Runs LOW/MEDIUM/HEAVY/SURGE/EMERGENCY x {baseline, adaptive, actuated,
-fusion} over multiple seeds and aggregates:
+fusion, rl, rl_special} over multiple seeds and aggregates:
   - avg_wait_s, max_queue, avg_queue, vehicles_served (mean +/- std)
   - per-scenario verdict (adaptive better / baseline better / tied) based on
     the mean average-wait delta
@@ -33,6 +33,7 @@ from .harness import (
     MetricsReport,
     ScenarioTrafficSource,
     SyntheticSignalSink,
+    emergency_corridor_variant,
     make_controller,
 )
 
@@ -57,6 +58,7 @@ def _build_controller(
     green_seconds: int,
     ablate: str | None,
     ablate_value: float | None,
+    rl_weights: str | None = None,
 ):
     kwargs = {}
     if mode == "baseline":
@@ -65,6 +67,8 @@ def _build_controller(
         kwargs["min_green_s"] = 10
         kwargs["max_green_s"] = 30
         kwargs["gap_s"] = 3
+    elif mode == "rl":
+        kwargs["weights_path"] = rl_weights
     controller = make_controller(mode, **kwargs)
 
     if ablate:
@@ -86,12 +90,39 @@ def _run(
     green_seconds: int,
     ablate: str | None = None,
     ablate_value: float | None = None,
+    rl_weights: str | None = None,
+    demand_model: str = "poisson",
+    platoon_on_s: int = 8,
+    platoon_off_s: int = 12,
+    corridor: str | None = None,
+    rl_specialist_dir: str | None = None,
+    headway_cv: float = 1.2,
 ) -> MetricsReport:
+    if mode == "rl_special":
+        key = "emergency" if corridor is not None else scenario_name
+        weights = Path(rl_specialist_dir) / f"rl_{key}.pt"
+        if not weights.is_file():
+            raise FileNotFoundError(
+                f"rl_special needs per-scenario weights at {weights} "
+                f"(train with: python scripts/train_rl_baseline.py --scenario {key} "
+                f"--out {weights})"
+            )
+        mode = "rl"
+        rl_weights = str(weights)
     scenario = SCENARIOS[scenario_name]
-    controller = _build_controller(mode, green_seconds, ablate, ablate_value)
+    if corridor is not None:
+        scenario = emergency_corridor_variant(corridor)
+    controller = _build_controller(mode, green_seconds, ablate, ablate_value, rl_weights)
     sink = SyntheticSignalSink(service_rate=service_rate)
     bridge = FalconBridge(
-        source=ScenarioTrafficSource(scenario, seed=seed),
+        source=ScenarioTrafficSource(
+            scenario,
+            seed=seed,
+            demand_model=demand_model,
+            platoon_on_s=platoon_on_s,
+            platoon_off_s=platoon_off_s,
+            headway_cv=headway_cv,
+        ),
         sink=sink,
         fps=1,
     )
@@ -108,9 +139,20 @@ def _average(
     green_seconds: int,
     ablate: str | None = None,
     ablate_value: float | None = None,
+    rl_weights: str | None = None,
+    demand_model: str = "poisson",
+    platoon_on_s: int = 8,
+    platoon_off_s: int = 12,
+    corridor: str | None = None,
+    rl_specialist_dir: str | None = None,
+    headway_cv: float = 1.2,
 ) -> dict[str, float | None]:
     reports = [
-        _run(name, mode, steps, seed, service_rate, green_seconds, ablate, ablate_value)
+        _run(
+            name, mode, steps, seed, service_rate, green_seconds, ablate, ablate_value,
+            rl_weights, demand_model, platoon_on_s, platoon_off_s, corridor,
+            rl_specialist_dir, headway_cv,
+        )
         for seed in seeds
     ]
     waits = [r.avg_wait_s for r in reports]
@@ -240,10 +282,50 @@ def _t_crit_95(df: int) -> float:
     return (lo + hi) / 2.0
 
 
+def _norm_cdf(z: float) -> float:
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+
+def _wilcoxon_p(diffs: list[float]) -> float | None:
+    """Two-sided Wilcoxon signed-rank p (normal approx. with tie correction).
+
+    Returns None when fewer than 5 nonzero pairs, the practical minimum for
+    the approximation to hold.
+    """
+    nonzero = [d for d in diffs if d != 0.0]
+    n = len(nonzero)
+    if n == 0:
+        return 1.0
+    if n < 5:
+        return None
+    order = sorted(range(n), key=lambda i: abs(nonzero[i]))
+    ranks = [0.0] * n
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and abs(abs(nonzero[order[j + 1]]) - abs(nonzero[order[i]])) < 1e-12:
+            j += 1
+        avg_rank = (i + j) / 2.0 + 1.0
+        for k in range(i, j + 1):
+            ranks[order[k]] = avg_rank
+        i = j + 1
+
+    w_plus = sum(ranks[i] for i in range(n) if nonzero[i] > 0)
+    mu = n * (n + 1) / 4.0
+    variance = n * (n + 1) * (2 * n + 1) / 24.0
+    for r in set(ranks):
+        g = ranks.count(r)
+        variance -= g * (g - 1) * (g + 1) / 48.0
+    if w_plus == mu or variance <= 0.0:
+        return 1.0
+    z = (w_plus - mu) / math.sqrt(max(variance, 1e-12))
+    return 2.0 * (1.0 - _norm_cdf(abs(z)))
+
+
 def paired_significance(
     reference: dict, contender: dict,
 ) -> dict | None:
-    """Paired two-sided t-test, 95% CI of the mean difference, and Cohen's dz.
+    """Paired two-sided t-test, Wilcoxon signed-rank, 95% CI, and Cohen's dz.
 
     Uses the per-seed `avg_wait_s` series stored for each controller in the
     benchmark artifact (matched by seed order). Returns None when the series
@@ -279,6 +361,7 @@ def paired_significance(
         "mean_diff_s": round(md, 2),
         "ci95_s": [round(md - half, 2), round(md + half, 2)],
         "p": round(p, 5),
+        "wilcoxon_p": round(_wilcoxon_p(diffs), 5) if _wilcoxon_p(diffs) is not None else None,
         "cohen_dz": round(dz, 2),
     }
 
@@ -294,9 +377,10 @@ def report_significance(results: dict, reference: str = "baseline", contender: s
         if st is None:
             continue
         ci = st["ci95_s"]
+        wilcoxon = f"  W={st['wilcoxon_p']:.5f}" if st["wilcoxon_p"] is not None else ""
         lines.append(
             f"{name:<12} paired t({st['seeds'] - 1}) d={st['mean_diff_s']:>6.2f}s "
-            f"95% CI [{ci[0]:>6.2f},{ci[1]:>6.2f}]  p={st['p']:.5f}  dz={st['cohen_dz']:>4.1f}"
+            f"95% CI [{ci[0]:>6.2f},{ci[1]:>6.2f}]  p={st['p']:.5f}{wilcoxon}  dz={st['cohen_dz']:>4.1f}"
         )
     return "\n".join(lines) if lines else ""
 
@@ -319,7 +403,7 @@ def _format_emergency_mean(rep: dict[str, float | None]) -> str:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="P1-B multi-scenario benchmark")
     parser.add_argument("--steps", type=int, default=600)
-    parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44, 45, 46])
+    parser.add_argument("--seeds", type=int, nargs="+", default=list(range(42, 72)))
     parser.add_argument("--service-rate", type=float, default=1.0)
     parser.add_argument("--scenario", default=None, help="Run only this scenario (default: all)")
     parser.add_argument("--out", default="profiling/artifacts/benchmark_results.json")
@@ -333,12 +417,39 @@ def parse_args() -> argparse.Namespace:
         "--controllers",
         nargs="+",
         default=["baseline", "adaptive"],
-        choices=["baseline", "adaptive", "actuated", "fusion"],
+        choices=["baseline", "adaptive", "actuated", "fusion", "rl", "rl_special"],
         help="controllers to benchmark (verdict is only reported when the "
-        "first two are 'baseline' and 'adaptive')",
+        "first two are 'baseline' and 'adaptive'; 'rl' = held-out-medium "
+        "generalist, 'rl_special' = per-scenario specialist weights)",
+    )
+    parser.add_argument(
+        "--rl-weights",
+        default="profiling/artifacts/rl_policy.pt",
+        help="trained DQN weights (torch state dict) for --controllers rl",
+    )
+    parser.add_argument(
+        "--rl-specialist-dir",
+        default="profiling/artifacts/rl_specialists",
+        help="directory of per-scenario DQN weights for --controllers rl_special "
+        "(expects rl_<scenario>.pt for every benchmarked scenario)",
     )
     parser.add_argument("--threshold", type=float, default=1.0,
                         help="delta % at which adaptive is declared the winner")
+    # --- experimental variants ---
+    parser.add_argument("--demand-model", default="poisson",
+                        choices=["poisson", "platoon", "lognormal"],
+                        help="arrival process (platoon = correlated bursts; "
+                        "lognormal = log-normal headway platoons)")
+    parser.add_argument("--headway-cv", type=float, default=2.0,
+                        help="log-normal headway coefficient of variation (lognormal demand)")
+    parser.add_argument("--platoon-on", type=int, default=8, help="platoon active window, seconds")
+    parser.add_argument("--platoon-off", type=int, default=12, help="platoon idle gap, seconds")
+    parser.add_argument("--corridor-sweep", action="store_true",
+                        help="run the emergency scenario for every approach corridor")
+    parser.add_argument("--corridor-out", default="profiling/artifacts/corridor_results.json",
+                        help="artifact path for --corridor-sweep")
+    parser.add_argument("--export-csv", default=None, metavar="PATH",
+                        help="also write a long-form per-seed CSV to PATH")
     # --- ablation sweep ---
     parser.add_argument("--ablate", default=None, choices=sorted(ABLATION_PARAMS),
                         help="sweep a controller parameter (writes ablation_results.json)")
@@ -434,17 +545,79 @@ def run_benchmark(
     green_seconds: int,
     controllers: list[str] = ("baseline", "adaptive"),
     threshold: float = 1.0,
+    rl_weights: str | None = None,
+    demand_model: str = "poisson",
+    platoon_on_s: int = 8,
+    platoon_off_s: int = 12,
+    rl_specialist_dir: str | None = None,
+    headway_cv: float = 1.2,
 ) -> dict:
     """Run every scenario x controllers over seeds, aggregated."""
     results: dict[str, dict] = {}
     for name in scenarios:
         block: dict = {}
         for ctrl in controllers:
-            block[ctrl] = _average(name, ctrl, steps, seeds, service_rate, green_seconds)
+            block[ctrl] = _average(
+                name, ctrl, steps, seeds, service_rate, green_seconds,
+                rl_weights=rl_weights, demand_model=demand_model,
+                platoon_on_s=platoon_on_s, platoon_off_s=platoon_off_s,
+                rl_specialist_dir=rl_specialist_dir, headway_cv=headway_cv,
+            )
         if "baseline" in controllers and "adaptive" in controllers:
             block["verdict"] = _verdict(block["baseline"], block["adaptive"], threshold)
         results[name] = block
     return results
+
+
+def run_corridor_sweep(
+    steps: int,
+    seeds,
+    service_rate: float,
+    green_seconds: int,
+    controllers: list[str] = ("baseline", "adaptive"),
+    rl_weights: str | None = None,
+    demand_model: str = "poisson",
+    platoon_on_s: int = 8,
+    platoon_off_s: int = 12,
+    rl_specialist_dir: str | None = None,
+    headway_cv: float = 1.2,
+) -> dict:
+    """Run the emergency scenario with the ambulance on each approach."""
+    from .harness.traffic import LANES
+
+    results: dict[str, dict] = {}
+    for corridor in LANES:
+        block: dict = {}
+        for ctrl in controllers:
+            block[ctrl] = _average(
+                "emergency", ctrl, steps, seeds, service_rate, green_seconds,
+                rl_weights=rl_weights, demand_model=demand_model,
+                platoon_on_s=platoon_on_s, platoon_off_s=platoon_off_s,
+                corridor=corridor, rl_specialist_dir=rl_specialist_dir,
+                headway_cv=headway_cv,
+            )
+        if "baseline" in controllers and "adaptive" in controllers:
+            block["verdict"] = _verdict(block["baseline"], block["adaptive"])
+        results[corridor] = block
+    return results
+
+
+def _export_csv(results: dict, seeds, out_path: Path) -> None:
+    """Write a long-form per-seed CSV (scenario, controller, seed, avg_wait_s)."""
+    import csv
+
+    rows: list[tuple[str, str, int, float]] = []
+    for scenario, block in sorted(results.items()):
+        for controller, rep in block.items():
+            if controller == "verdict":
+                continue
+            for seed, wait in zip(seeds, rep.get("avg_wait_s") or [], strict=False):
+                rows.append((scenario, controller, int(seed), float(wait)))
+    with out_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["scenario", "controller", "seed", "avg_wait_s"])
+        for row in sorted(rows, key=lambda r: (r[0], r[1], r[2])):
+            writer.writerow(row)
 
 
 def main() -> int:
@@ -452,6 +625,76 @@ def main() -> int:
 
     if args.ablate:
         return run_ablation(args)
+
+    if "rl" in args.controllers:
+        rl_path = (ROOT / args.rl_weights).resolve()
+        if not rl_path.is_file():
+            print(f"error: --controllers rl requires trained weights at {rl_path} "
+                  f"(run scripts/train_rl_baseline.py first)")
+            return 2
+
+    if "rl_special" in args.controllers:
+        spec_dir = (ROOT / args.rl_specialist_dir).resolve()
+        keys = ["emergency"] if args.corridor_sweep else sorted(SCENARIOS)
+        missing = [f"rl_{k}.pt" for k in keys if not (spec_dir / f"rl_{k}.pt").is_file()]
+        if missing:
+            print(f"error: rl_special requires per-scenario weights in {spec_dir}; missing "
+                  f"{', '.join(missing)} (train with scripts/train_rl_baseline.py)")
+            return 2
+
+    demand_kwargs = {
+        "demand_model": args.demand_model,
+        "platoon_on_s": args.platoon_on,
+        "platoon_off_s": args.platoon_off,
+        "headway_cv": args.headway_cv,
+    }
+
+    if args.corridor_sweep:
+        results = run_corridor_sweep(
+            args.steps, args.seeds, args.service_rate, args.baseline_green,
+            args.controllers, args.rl_weights, rl_specialist_dir=args.rl_specialist_dir,
+            **demand_kwargs,
+        )
+        print(f"Corridor sweep ({args.demand_model} demand): emergency corridor x "
+              f"{len(args.seeds)} seeds x {args.controllers} at {args.steps} steps\n")
+        header = f"{'Corridor':<9} {'Controller':<10} {'AvgWait':>12} {'Verdict':<18}"
+        print(header)
+        print("-" * len(header))
+        for corridor in sorted(results):
+            block = results[corridor]
+            for ctrl in args.controllers:
+                rep = block[ctrl]
+                print(f"{corridor:<9} {ctrl:<10} {rep['avg_wait_mean']:>6.1f}s +/- {rep['avg_wait_std']:>4.1f} "
+                      f"{block.get('verdict', ''):<18}")
+                em = _format_emergency_mean(rep)
+                if em:
+                    print(f"{'':8} {'':10} {em}")
+            print()
+        sig = report_significance(results)
+        if sig:
+            print("Matched significance per corridor:")
+            print(sig)
+            print()
+        out_path = (ROOT / args.corridor_out).resolve()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
+            json.dumps({
+                "p1b": "emergency corridor sweep",
+                "steps": args.steps,
+                "seeds": args.seeds,
+                "service_rate": args.service_rate,
+                "baseline_green_s": args.baseline_green,
+                "controllers": args.controllers,
+                "demand_model": args.demand_model,
+                "results": results,
+            }, indent=2),
+            encoding="utf-8",
+        )
+        print(f"Wrote corridor sweep artifact to {out_path}")
+        if args.export_csv:
+            _export_csv(results, args.seeds, (ROOT / args.export_csv).resolve())
+            print(f"Wrote per-seed CSV to {args.export_csv}")
+        return 0
 
     scenarios = [args.scenario] if args.scenario else sorted(SCENARIOS.keys())
 
@@ -463,10 +706,16 @@ def main() -> int:
         args.baseline_green,
         args.controllers,
         args.threshold,
+        args.rl_weights,
+        rl_specialist_dir=args.rl_specialist_dir,
+        **demand_kwargs,
     )
 
-    print(f"Benchmark: {len(scenarios)} scenarios x {len(args.seeds)} seeds x "
-          f"{args.controllers} at {args.steps} steps each, "
+    if args.demand_model in ("platoon", "lognormal") and args.out == "profiling/artifacts/benchmark_results.json":
+        args.out = f"profiling/artifacts/{args.demand_model}_results.json"
+
+    print(f"Benchmark ({args.demand_model} demand): {len(scenarios)} scenarios x "
+          f"{len(args.seeds)} seeds x {args.controllers} at {args.steps} steps each, "
           f"baseline green={args.baseline_green}s\n")
     header = (
         f"{'Scenario':<12} {'Controller':<10} {'AvgWait':>12} {'MaxQ':>10} "
@@ -511,6 +760,10 @@ def main() -> int:
                 "baseline_green_s": args.baseline_green,
                 "controllers": args.controllers,
                 "threshold_pct": args.threshold,
+"demand_model": args.demand_model,
+                "platoon_on_s": args.platoon_on,
+                "platoon_off_s": args.platoon_off,
+                "headway_cv": args.headway_cv,
                 "results": results,
             },
             indent=2,
@@ -518,6 +771,9 @@ def main() -> int:
         encoding="utf-8",
     )
     print(f"Wrote benchmark artifact to {out_path}")
+    if args.export_csv:
+        _export_csv(results, args.seeds, (ROOT / args.export_csv).resolve())
+        print(f"Wrote per-seed CSV to {args.export_csv}")
     return 0
 
 

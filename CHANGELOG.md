@@ -52,6 +52,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GitHub Actions CI** (`.github/workflows/ci.yml`): pytest + ruff.
 - **Reproduce pipeline** (`Makefile` targets), `pyproject.toml`
   (ruff/mypy/pytest config), and `main.py --infer-every` / `--reconnect`.
+- **Model-free DQN RL baseline** (`sumo_demo/rl_baseline.py` +
+  `scripts/train_rl_baseline.py`): learns green-hold durations
+  ({5,10,15,30} s) over a round-robin service order from a 9-dim state,
+  with n-step returns and a target network; trained on held-out medium
+  seeds and served via `--controllers ... rl --rl-weights <path>`.
+- **30-seed statistical protocol**: benchmark seed range defaults to
+  `42..71`, and every adaptive-vs-baseline comparison adds a matched
+  paired t-test, Wilcoxon signed-rank test, 95% CI, and Cohen's dz.
+- **Corridor sweep** (`--corridor-sweep`): emergency scenario replayed
+  with the ambulance corridor on each of the four approaches.
+- **Platoon demand model** (`--demand-model platoon`): correlated burst
+  arrivals (on/off cycle with per-approach phase offsets) alongside the
+  Poisson model.
+- **Log-normal headway demand model** (`--demand-model lognormal`,
+  `--headway-cv`): renewal arrivals with log-normal inter-arrival
+  headways (cv default 2.0, 0.4 s floor) that cluster into platoons at
+  signal-relevant timescales while preserving mean flow; adaptive-vs-
+  baseline margins widen to 31-49% under this model. Raw per-seed CSV
+  `results/raw/lognormal_results.csv` (750 rows).
+- **Per-seed CSV export** (`--export-csv`): long-form (scenario,
+  controller, seed, avg_wait_s) so every reported statistic is
+  re-derivable.
+- **Per-scenario DQN specialists** (`--controllers rl_special`): the same
+  DQN architecture retrained per scenario via
+  `scripts/train_rl_baseline.py --specialist-dir`, resolved at benchmark
+  time from `profiling/artifacts/rl_specialists/rl_<scenario>.pt`; the
+  held-out-medium model remains the `rl` generalist arm.
+- **Arterial network harness** (`sumo_demo/harness/network.py`): a
+  three-intersection line with Poisson end/cross sources, a travel-delay
+  transfer model, and programmed westbound preemption progression
+  (staggered detection every 8 s per node). Runner
+  `sumo_demo/network_benchmark.py` plus contract suite
+  `tests/test_network_preemption.py` (14 checks) and raw per-seed CSV
+  `results/raw/network_results.csv` (arterial, 60 rows); adaptive vs
+  baseline network-wide wait `21.1 -> 17.0` s, d=4.08 s, dz=4.20.
+- **MIT LICENSE** and `rl = ["torch"]` optional dependency extra in
+  `pyproject.toml`.
 
 ### Changed
 - Refactored codebase to organize imports and enhance overall code readability across multiple files.
@@ -66,6 +103,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no camera, video, or webcam is available — no longer reports FAIL in CI.
 - Benchmark results re-aligned to the fair explicit 13 s baseline; the new
   controller arms land between the fixed-time and adaptive extremes.
+- `sumo_demo/benchmark.py` reports all four arms and significance by
+  default; the artifact and printed tables now include the actuated,
+  fusion, and RL arms alongside baseline/adaptive.
 
 ### Fixed
 - Fixed `.gitignore` to properly exclude environment, cache, and large unnecessary files.
@@ -86,9 +126,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pinned in YELLOW with zero throughput. Generalized to any non-emergency mode.
 - Ruff lint clean repo, including a previously silent `Circle`/`Rectangle`
   annotation-only missing import.
-
-### Documentation
-- Added comprehensive GPS documentation and analysis scripts.
-- Updated `README.md` with detailed information regarding models and dataset tracking.
-- README now documents the controller arms, ablation sweeps, CI, and the
-  pytest/ruff verification commands.

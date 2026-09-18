@@ -7,19 +7,67 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+
 # YOLO outputs
 runs/
+
 
 # OS files
 .DS_Store
 
+
+# Environment and deps
 .venv/
+
 
 # Generated benchmark and smoke-run outputs
 artifacts/
-
-
-# Local comparison/reference repo
 comparison/
-
 paper/
+results/
+profiling/
+
+
+# Local reference data
+references/
+
+
+# Hypothesis database
+.hypothesis/
+
+
+# Session artefacts from reproduce scripts
+scripts/reproduce_paper_stats.py
+scripts/train_ppo_baseline.py
+scripts/train_rl_baseline.py
+scripts/validate_detector_synthetic.py
+
+
+# Paper-harness files (lazy TraCI, network, PPO, RL baselines)
+sumo_demo/harness/network.py
+sumo_demo/network_benchmark.py
+sumo_demo/ppo_baseline.py
+sumo_demo/rl_baseline.py
+
+
+# Test files tied to paper benchmark results
+tests/test_network_preemption.py
+tests/test_ppo_baseline.py
+tests/test_reproduce_stats.py
+tests/test_rl_baseline.py
+
+
+# Paper provenance data and configs
+CITATION.cff
+LICENSE
+RELEASE_NOTES.md
+labels.json
+
+
+# CSV/JSON outputs from per-run scripts
+scripts/*.csv
+scripts/*.json
+
+
+# Hypothesis database
+.hypothesis/

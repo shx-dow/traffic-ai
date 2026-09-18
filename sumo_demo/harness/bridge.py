@@ -58,6 +58,7 @@ def make_controller(mode: str, **kwargs):
     - 'baseline'  : BaselineSignalController (fixed-time)
     - 'actuated'  : ActuatedSignalController (gap-out)
     - 'fusion'    : FusionSignalController (backlog + arrival rate)
+    - 'rl'        : DQNController (learned green allocation; weights_path kwarg)
     """
     from logic.actuated_signal import ActuatedSignalController
     from logic.baseline_signal import BaselineSignalController
@@ -70,6 +71,10 @@ def make_controller(mode: str, **kwargs):
         return ActuatedSignalController(**kwargs)
     if mode == "fusion":
         return FusionSignalController(**kwargs)
+    if mode == "rl":
+        from ..rl_baseline import DQNController
+
+        return DQNController(weights_path=kwargs.get("weights_path"))
     return SignalController()
 
 

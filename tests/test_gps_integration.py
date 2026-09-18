@@ -10,7 +10,8 @@ if str(ROOT) not in sys.path:
 
 import numpy as np
 import pytest
-import requests
+
+requests = pytest.importorskip("requests")
 
 from config import GPS_SERVER_URL
 from gps_utils import CAMERA_LAT, CAMERA_LON, calculate_distance

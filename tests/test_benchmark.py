@@ -46,6 +46,31 @@ def test_verdict_directions():
     assert _verdict({"avg_wait_mean": 10.0}, {"avg_wait_mean": 10.0}) == "TIED"
 
 
+def test_paired_significance_rejects_no_difference():
+    ref = {"avg_wait_s": [12.0, 14.0, 13.0, 12.5, 13.5]}
+    cont = {"avg_wait_s": [6.0, 7.0, 5.5, 6.5, 6.0]}
+    st = benchmark_mod.paired_significance(ref, cont)
+    assert st["seeds"] == 5
+    assert st["mean_diff_s"] > 0
+    assert st["p"] < 0.05
+    assert st["ci95_s"][0] > 0
+    assert st["cohen_dz"] > 0
+
+
+def test_paired_significance_tied_and_missing():
+    same = {"avg_wait_s": [10.0] * 5}
+    st = benchmark_mod.paired_significance(same, {"avg_wait_s": [10.0] * 5})
+    assert st is not None and st["p"] == 1.0
+    assert benchmark_mod.paired_significance({"avg_wait_s": None}, {"avg_wait_s": None}) is None
+    assert benchmark_mod.paired_significance({"avg_wait_s": [1.0]}, {"avg_wait_s": [1.0, 2.0]}) is None
+
+
+def test_t_crit_95_matches_table():
+    assert abs(benchmark_mod._t_crit_95(4) - 2.7764451051977987) < 1e-3
+    assert benchmark_mod._t_two_tailed_p(1.0, 4) > 0.3
+    assert benchmark_mod._t_two_tailed_p(10.0, 4) < 0.001
+
+
 def test_run_benchmark_covers_all_scenarios():
     results = benchmark_mod.run_benchmark(
         sorted(SCENARIOS), steps=60, seeds=[1], service_rate=1.0, green_seconds=13

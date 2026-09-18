@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 from pathlib import Path
 
@@ -151,6 +152,153 @@ def _verdict(reference: dict[str, float | None], contender: dict[str, float | No
     if delta < -threshold:
         return "REFERENCE_BETTER"
     return "TIED"
+
+
+def _reg_beta(a: float, b: float, x: float) -> float:
+    """Regularized incomplete beta function I_x(a, b) (Numerical Recipes).
+
+    Used for Student-t tail probabilities without pulling in a scipy dep.
+    """
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+
+    def _gammln(xx: float) -> float:
+        cof = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+               -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5]
+        y = xx
+        tmp = y + 5.5 - (y + 0.5) * math.log(y + 5.5)
+        ser = 1.000000000190015
+        for j in range(6):
+            ser += cof[j] / (y + 1)
+            y += 1
+        return -tmp + math.log(2.5066282746310005 * ser / xx)
+
+    def _betacf(aa: float, bb: float, xx: float) -> float:
+        maxit, eps = 1000, 3.0e-12
+        qab, qap, qam = aa + bb, aa + 1.0, aa - 1.0
+        c, d, m2 = 1.0, 1.0 - qab * xx / qap, 0.0
+        if abs(d) < 1e-30:
+            d = 1e-30
+        d = 1.0 / d
+        h = d
+        for m in range(1, maxit):
+            m2 += 2
+            aa_ = m * (bb - m) * xx / ((qam + m2) * (aa + m2))
+            d = 1.0 + aa_ * d
+            if abs(d) < 1e-30:
+                d = 1e-30
+            c = 1.0 + aa_ / c
+            if abs(c) < 1e-30:
+                c = 1e-30
+            d = 1.0 / d
+            h *= d * c
+            aa_ = -(aa + m) * (qab + m) * xx / ((aa + m2) * (qap + m2))
+            d = 1.0 + aa_ * d
+            if abs(d) < 1e-30:
+                d = 1e-30
+            c = 1.0 + aa_ / c
+            if abs(c) < 1e-30:
+                c = 1e-30
+            d = 1.0 / d
+            delta = d * c
+            h *= delta
+            if abs(delta - 1.0) < eps and m > 3:
+                break
+        return h
+
+    bt = math.exp(_gammln(a + b) - _gammln(a) - _gammln(b)
+                  + a * math.log(x) + b * math.log(1 - x))
+    if x < (a + 1.0) / (a + b + 2.0):
+        return bt * _betacf(a, b, x) / a
+    return 1.0 - bt * _betacf(b, a, 1.0 - x) / b
+
+
+def _t_two_tailed_p(t: float, df: int) -> float:
+    """Two-sided p-value for a Student-t statistic with `df` degrees of freedom.
+
+    Uses F(t) = 1 - (1/2) I_{df/(df+t^2)}(df/2, 1/2), so p = 2(1 - F(|t|)).
+    """
+    if not math.isfinite(t):
+        return 0.0
+    x = df / (df + t * t)
+    return _reg_beta(df / 2.0, 0.5, x)
+
+
+def _t_crit_95(df: int) -> float:
+    """Two-tailed 95% critical value t(df, 0.975) via bisection on the CDF."""
+    lo, hi = 0.0, 1.0
+    while _t_two_tailed_p(hi, df) > 0.05:
+        hi *= 2.0
+    for _ in range(80):
+        mid = (lo + hi) / 2.0
+        if _t_two_tailed_p(mid, df) > 0.05:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0
+
+
+def paired_significance(
+    reference: dict, contender: dict,
+) -> dict | None:
+    """Paired two-sided t-test, 95% CI of the mean difference, and Cohen's dz.
+
+    Uses the per-seed `avg_wait_s` series stored for each controller in the
+    benchmark artifact (matched by seed order). Returns None when the series
+    are missing or of unequal length.
+    """
+    base = reference.get("avg_wait_s")
+    cont = contender.get("avg_wait_s")
+    if not base or not cont:
+        return None
+    base = [float(v) for v in base]
+    cont = [float(v) for v in cont]
+    if len(base) != len(cont) or len(base) < 2:
+        return None
+    n = len(base)
+    diffs = [b - c for b, c in zip(base, cont)]
+    md = statistics.fmean(diffs)
+    sd = statistics.stdev(diffs)
+    df = n - 1
+    if sd > 0:
+        t = md / (sd / math.sqrt(n))
+        p = _t_two_tailed_p(abs(t), df)
+        tc = _t_crit_95(df)
+        half = tc * sd / math.sqrt(n)
+        dz = md / sd
+    else:
+        half = 0.0
+        if md == 0:
+            p, dz = 1.0, 0.0
+        else:
+            p, dz = 0.0, math.inf
+    return {
+        "seeds": n,
+        "mean_diff_s": round(md, 2),
+        "ci95_s": [round(md - half, 2), round(md + half, 2)],
+        "p": round(p, 5),
+        "cohen_dz": round(dz, 2),
+    }
+
+
+def report_significance(results: dict, reference: str = "baseline", contender: str = "adaptive") -> str:
+    """Human-readable matched-test summary for reference vs contender."""
+    lines = []
+    for name in sorted(results):
+        block = results[name]
+        if reference not in block or contender not in block:
+            continue
+        st = paired_significance(block[reference], block[contender])
+        if st is None:
+            continue
+        ci = st["ci95_s"]
+        lines.append(
+            f"{name:<12} paired t({st['seeds'] - 1}) d={st['mean_diff_s']:>6.2f}s "
+            f"95% CI [{ci[0]:>6.2f},{ci[1]:>6.2f}]  p={st['p']:.5f}  dz={st['cohen_dz']:>4.1f}"
+        )
+    return "\n".join(lines) if lines else ""
 
 
 def _format_emergency_mean(rep: dict[str, float | None]) -> str:
@@ -343,6 +491,12 @@ def main() -> int:
             em = _format_emergency_mean(rep)
             if em:
                 print(f"{'':9} {'':10} {em}")
+        print()
+
+    sig = report_significance(results)
+    if sig:
+        print("Matched significance (baseline vs adaptive, per-seed paired t-test):")
+        print(sig)
         print()
 
     out_path = (ROOT / args.out).resolve()

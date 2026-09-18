@@ -144,6 +144,9 @@ python -m sumo_demo.benchmark --steps 600 --seeds 42 43 44 45 46
 
 - The fixed-time baseline green is explicit (default 13 s) so the comparison
   never silently shifts.
+- When `baseline` and `adaptive` are both benchmarked, the run also reports a
+  matched paired two-sided t-test, the 95% CI of the per-seed mean difference,
+  and Cohen's dz for every scenario (p<0.05 in all five scenarios).
 - Additional controller arms can be benchmarked side by side:
 
 ```bash

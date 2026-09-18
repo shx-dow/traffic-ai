@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -71,6 +72,9 @@ def test_detection_on_video(video_path: str):
     print("\n" + "=" * 60)
     print("RUNNING DETECTION TEST")
     print("=" * 60)
+
+    if importlib.util.find_spec("ultralytics") is None:
+        pytest.skip("ultralytics/torch not installed; skipping live YOLO smoke test")
 
     from vision.detector import VehicleDetector
 

@@ -75,3 +75,9 @@ EMERGENCY_ETA_SECONDS = 45
 GPS_REQUEST_TIMEOUT_SECONDS = 0.5
 GPS_POLL_INTERVAL_SECONDS = 0.5
 EMERGENCY_LATCH_SECONDS = 3
+
+# Vision emergency temporal confirmation: require N consecutive frames detecting
+# an emergency vehicle before confirming, and hold confirmation while a missed
+# frame stays inside the grace window.
+VISION_CONFIRM_FRAMES = 3
+VISION_GRACE_FRAMES = 5

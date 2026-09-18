@@ -8,12 +8,20 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 import cv2
 
-from config import (BASELINE_GREEN_SECONDS, CONFIG, DEFAULT_SIGNAL_MODE,
-                    EMERGENCY_LATCH_SECONDS, MODEL_PATH)
+from config import (
+    BASELINE_GREEN_SECONDS,
+    CONFIG,
+    DEFAULT_SIGNAL_MODE,
+    EMERGENCY_LATCH_SECONDS,
+    MODEL_PATH,
+    VISION_CONFIRM_FRAMES,
+    VISION_GRACE_FRAMES,
+)
 from logic.baseline_signal import BaselineSignalController
 from logic.counter import LaneCounter
 from logic.live_metrics import LiveMetricsTracker
@@ -21,8 +29,7 @@ from logic.orchestrator import CorridorOrchestrator
 from logic.roi import parse_rect_roi
 from logic.runtime import select_corridor_lane
 from logic.signal import SignalController
-from logic.signal_state import (SignalStateSensor, parse_roi_arg,
-                                resolve_signal_reading)
+from logic.signal_state import SignalStateSensor, parse_roi_arg, resolve_signal_reading
 from logic.traffic_loop import build_signal_summary, is_balanced
 from ui.overlay import TrafficOverlay
 from utils.helpers import run_repo_pipeline
@@ -46,6 +53,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--headless", action="store_true",
                     help="Run without opening a display window (useful for CI)")
     p.add_argument("--max-frames", type=int, default=0, help="Stop after N frames (0 means no limit)")
+    p.add_argument("--infer-every", type=int, default=1,
+                   help="Run YOLO inference every N frames (1 = every frame); "
+                        "frames in between reuse the last detections")
+    p.add_argument("--reconnect", action="store_true",
+                   help="Keep retrying to open the capture after read() fails "
+                        "(keeps a flaky webcam stream alive)")
     p.add_argument("--save-output", action="store_true", default=CONFIG.get("save_output", False))
     p.add_argument("--output-path", default=CONFIG.get("output_path", "artifacts/demo_output.mp4"))
     p.add_argument("--run-pipeline", action="store_true", help="Run core repo validation checks before main loop")
@@ -160,10 +173,8 @@ def main() -> None:
     # Setup graceful shutdown handlers
     ge = GracefulExit()
     signal.signal(signal.SIGINT, ge)
-    try:
+    with suppress(AttributeError, ValueError):
         signal.signal(signal.SIGTERM, ge)
-    except (AttributeError, ValueError):
-        pass
 
     cap = open_capture(args.video_source)
     if not cap.isOpened():
@@ -172,7 +183,11 @@ def main() -> None:
 
     frame_width, frame_height = get_capture_dimensions(cap, args.frame_width, args.frame_height)
 
-    detector = VehicleDetector(model_path=args.model_path)
+    detector = VehicleDetector(
+        model_path=args.model_path,
+        confirm_vision_frames=int(CONFIG.get("vision_confirm_frames", VISION_CONFIRM_FRAMES)),
+        vision_grace_frames=int(CONFIG.get("vision_grace_frames", VISION_GRACE_FRAMES)),
+    )
     counter_mode = "top_down" if args.top_down_view else str(CONFIG.get("counter_mode", "per_camera"))
     per_camera_mode = counter_mode == "per_camera"
     show_directional_counts = counter_mode == "top_down"
@@ -203,6 +218,8 @@ def main() -> None:
     active_lane = lanes[0]
     frame_counter = 0
     processed_frames = 0
+    frame_no = 0
+    last_detection = None
     vision_hold_frames = 0
     last_corridor_lane = args.camera_lane
     manual_emergency = False
@@ -249,10 +266,29 @@ def main() -> None:
     while not ge.exit and cap.isOpened():
         ret, frame = cap.read()
         if not ret:
+            # Hardening: a flaky camera can drop a frame or EOF spuriously.
+            if args.reconnect:
+                LOGGER.warning("Capture read failed — reopening source %r", args.video_source)
+                cap.release()
+                for attempt in range(30):
+                    cap = open_capture(args.video_source)
+                    if cap is not None and cap.isOpened():
+                        LOGGER.info("Capture re-opened on attempt %d", attempt + 1)
+                        break
+                    time.sleep(1)
+                else:
+                    LOGGER.error("Gave up after 30 reconnect attempts")
+                    break
+                continue
             LOGGER.info("End of stream or cannot read frame")
             break
 
-        detection = detector.detect(frame)
+        # Inference throttle: run YOLO every `infer_every` frames, reuse the
+        # last detections in between. Saves most of the per-frame ML cost.
+        if frame_no % max(1, args.infer_every) == 0 or last_detection is None:
+            last_detection = detector.detect(frame)
+        detection = last_detection
+        frame_no += 1
 
         lane_counts = counter.count_per_lane(detection["vehicles"])
         lane_scores = compute_lane_scores_for_runtime(
@@ -326,41 +362,55 @@ def main() -> None:
                 corridor_lane_source = "orchestrator_plan"
             orchestrator_emergency_nodes = sum(1 for p in plan.values() if p.mode == "EMERGENCY")
 
-        if emergency_active and signal_ctrl.mode != "EMERGENCY":
-            last_corridor_lane = corridor
-            signal_ctrl.override_for_emergency(corridor)
-
-        if emergency_active and signal_ctrl.mode == "EMERGENCY":
-            if corridor != last_corridor_lane:
-                last_corridor_lane = corridor
-                signal_ctrl.override_for_emergency(corridor)
-
-        if not emergency_active and signal_ctrl.mode == "EMERGENCY":
-            signal_ctrl.resume_adaptive()
-            frame_counter = 0
+        signal_ctrl.tick(fps)
 
         if signal_ctrl.mode == "EMERGENCY":
-            signal_states = signal_ctrl.current_state
+            if not emergency_active and signal_ctrl.emergency_state == "PREEMPTION":
+                signal_ctrl.begin_recovery(fps)
+                frame_counter = 0
+            if emergency_active and corridor != last_corridor_lane:
+                last_corridor_lane = corridor
+                signal_ctrl.request_emergency_preemption(corridor, fps, current_green_lane=active_lane)
+            signal_states = signal_ctrl.get_current_signal_state(active_lane)
             decision_reason = f"Emergency corridor override ({emergency_source})"
         else:
-            signal_states = signal_ctrl.get_current_signal_state(active_lane)
-
-            should_switch = signal_ctrl.should_switch_lane(
-                active_lane=active_lane,
-                lane_counts=lane_scores,
-                frame_counter=frame_counter,
-                fps=fps,
-            )
-
-            if should_switch:
-                signal_ctrl.record_cycle(active_lane, lane_counts)
-                active_lane = signal_ctrl.choose_next_lane(active_lane, lane_scores)
-                frame_counter = 0
-                decision_reason = f"Switched to {active_lane} (higher congestion score)"
+            if emergency_active:
+                last_corridor_lane = corridor
+                signal_ctrl.request_emergency_preemption(corridor, fps, current_green_lane=active_lane)
+                signal_states = signal_ctrl.get_current_signal_state(active_lane)
+                decision_reason = f"Emergency corridor override ({emergency_source})"
             else:
-                frame_counter += 1
-                balance_gap = float(getattr(signal_ctrl, "CONGESTION_BALANCE_GAP", 2.5))
-                balanced = is_balanced(lane_scores.values(), balance_gap)
+                signal_states = signal_ctrl.get_current_signal_state(active_lane)
+
+                should_switch = (
+                    signal_ctrl.should_switch_lane(
+                        active_lane=active_lane,
+                        lane_counts=lane_scores,
+                        frame_counter=frame_counter,
+                        fps=fps,
+                    )
+                    and not signal_ctrl.is_transitioning
+                )
+
+                if should_switch:
+                    signal_ctrl.record_cycle(active_lane, lane_counts)
+                    prev_lane = active_lane
+                    active_lane = signal_ctrl.choose_next_lane(active_lane, lane_scores)
+                    signal_ctrl.begin_lane_transition(
+                        prev_lane=prev_lane,
+                        next_lane=active_lane,
+                        fps=fps,
+                    )
+                    frame_counter = 0
+                    decision_reason = f"Switched to {active_lane} (higher congestion score)"
+                else:
+                    frame_counter += 1
+                balance_gap = getattr(signal_ctrl, "_effective_switch_gap", None)
+                if callable(balance_gap):
+                    gap_value = balance_gap(float(max(lane_scores.values())))
+                else:
+                    gap_value = float(getattr(signal_ctrl, "CONGESTION_BALANCE_GAP", 2.5))
+                balanced = is_balanced(lane_scores.values(), gap_value)
                 decision_reason = (
                     f"Holding {active_lane} (balanced flow)"
                     if balanced

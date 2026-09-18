@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict, List
-
 from logic.counter import LaneCounter
 
 LANES = ("north", "south", "east", "west")
@@ -9,8 +7,8 @@ CORRIDOR_CLASSES = frozenset({"ambulance", "fire_truck"})
 
 
 def select_corridor_lane(
-    vehicles: List[Dict],
-    lane_counts: Dict[str, int],
+    vehicles: list[dict],
+    lane_counts: dict[str, int],
     lane_counter: LaneCounter,
     fallback_lane: str,
     last_corridor_lane: str | None = None,

@@ -5,7 +5,9 @@ import json
 from collections import Counter
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, List
+from typing import Any
+
+LANES = ("north", "south", "east", "west")
 
 
 def parse_args() -> argparse.Namespace:
@@ -18,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _read_json(path: Path) -> Dict[str, Any] | None:
+def _read_json(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
@@ -27,10 +29,10 @@ def _read_json(path: Path) -> Dict[str, Any] | None:
         return None
 
 
-def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     try:
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
@@ -46,7 +48,7 @@ def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
     return rows
 
 
-def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def summarize_live_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not rows:
         return {
             "frames": 0,
@@ -54,6 +56,7 @@ def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             "avg_wait_seconds_mean": None,
             "max_queue_peak": None,
             "throughput_final": None,
+            "avg_lane_counts": None,
             "top_decision_reason": None,
             "top_emergency_source": None,
             "top_corridor_lane": None,
@@ -64,6 +67,15 @@ def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     waits = [float(row.get("avg_wait_seconds", 0.0)) for row in rows if "avg_wait_seconds" in row]
     queues = [int(row.get("max_queue", 0)) for row in rows if "max_queue" in row]
     final_throughput = rows[-1].get("throughput_score")
+
+    lane_totals = {lane: 0.0 for lane in LANES}
+    lane_frames = 0
+    for row in rows:
+        counts = row.get("lane_counts") or {}
+        lane_frames += 1
+        for lane in LANES:
+            lane_totals[lane] += float(counts.get(lane, 0.0))
+    avg_lane_counts = {lane: lane_totals[lane] / lane_frames for lane in LANES} if lane_frames else None
 
     reasons = Counter(str(row.get("decision_reason", "")) for row in rows if row.get("decision_reason"))
     sources = Counter(str(row.get("emergency_source", "")) for row in rows if row.get("emergency_source"))
@@ -76,6 +88,7 @@ def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "avg_wait_seconds_mean": mean(waits) if waits else None,
         "max_queue_peak": max(queues) if queues else None,
         "throughput_final": final_throughput,
+        "avg_lane_counts": avg_lane_counts,
         "top_decision_reason": reasons.most_common(1)[0][0] if reasons else None,
         "top_emergency_source": sources.most_common(1)[0][0] if sources else None,
         "top_corridor_lane": corridor_lanes.most_common(1)[0][0] if corridor_lanes else None,
@@ -83,7 +96,7 @@ def summarize_live_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def summarize_benchmark(benchmark: Dict[str, Any] | None) -> Dict[str, Any]:
+def summarize_benchmark(benchmark: dict[str, Any] | None) -> dict[str, Any]:
     if not benchmark:
         return {"wait_reduction_pct": None, "throughput_gain_pct": None}
     comp = benchmark.get("comparison", {})
@@ -93,7 +106,7 @@ def summarize_benchmark(benchmark: Dict[str, Any] | None) -> Dict[str, Any]:
     }
 
 
-def summarize_orchestrator(orchestrator: Dict[str, Any] | None) -> Dict[str, Any]:
+def summarize_orchestrator(orchestrator: dict[str, Any] | None) -> dict[str, Any]:
     if not orchestrator:
         return {"final_emergency_nodes": None, "route": None}
     events = orchestrator.get("events", [])
@@ -108,11 +121,33 @@ def summarize_orchestrator(orchestrator: Dict[str, Any] | None) -> Dict[str, Any
     }
 
 
+def calculate_green_red_split(avg_lane_counts: dict[str, float] | None) -> dict[str, Any]:
+    if not avg_lane_counts:
+        return {"greens": None, "reds": None, "cycle_seconds": None}
+
+    min_green = 10
+    max_green = 60
+    total = sum(float(avg_lane_counts.get(lane, 0.0)) for lane in LANES)
+
+    if total <= 0:
+        greens = {lane: min_green for lane in LANES}
+    else:
+        budget = max_green - min_green
+        greens = {}
+        for lane in LANES:
+            raw = min_green + (float(avg_lane_counts.get(lane, 0.0)) / total) * budget
+            greens[lane] = max(min_green, min(int(raw), max_green))
+
+    cycle_seconds = sum(greens.values())
+    reds = {lane: max(cycle_seconds - greens[lane], 0) for lane in LANES}
+    return {"greens": greens, "reds": reds, "cycle_seconds": cycle_seconds}
+
+
 def render_markdown(
     *,
-    live: Dict[str, Any],
-    benchmark: Dict[str, Any],
-    orchestrator: Dict[str, Any],
+    live: dict[str, Any],
+    benchmark: dict[str, Any],
+    orchestrator: dict[str, Any],
     output_video: str,
     metrics_log: str,
     benchmark_path: str,
@@ -124,6 +159,11 @@ def render_markdown(
         if isinstance(value, float):
             return f"{value:.{digits}f}"
         return str(value)
+
+    signal_split = calculate_green_red_split(live.get("avg_lane_counts"))
+    greens = signal_split["greens"]
+    reds = signal_split["reds"]
+    cycle_seconds = signal_split["cycle_seconds"]
 
     lines = [
         "# Demo Report",
@@ -139,6 +179,26 @@ def render_markdown(
         f"- Dominant corridor lane: {fmt(live['top_corridor_lane'])}",
         f"- Dominant corridor lane source: {fmt(live['top_corridor_source'])}",
         "",
+        "## Recommended Green/Red Split",
+    ]
+
+    if greens and reds and cycle_seconds:
+        lines.extend([
+            f"- Cycle length from adaptive split: {fmt(cycle_seconds)} s",
+            "",
+            "| Lane | Green (s) | Red (s) |",
+            "| --- | ---: | ---: |",
+        ])
+        for lane in LANES:
+            lines.append(f"| {lane.title()} | {fmt(greens[lane])} | {fmt(reds[lane])} |")
+        lines.append("")
+    else:
+        lines.extend([
+            "- No traffic samples available to compute a green/red split.",
+            "",
+        ])
+
+    lines.extend([
         "## Benchmark Summary",
         f"- Wait reduction vs baseline (%): {fmt(benchmark['wait_reduction_pct'])}",
         f"- Throughput gain vs baseline (%): {fmt(benchmark['throughput_gain_pct'])}",
@@ -152,7 +212,7 @@ def render_markdown(
         f"- Runtime metrics log: `{metrics_log}`",
         f"- Benchmark metrics: `{benchmark_path}`",
         f"- Orchestrator output: `{orchestrator_path}`",
-    ]
+    ])
     return "\n".join(lines) + "\n"
 
 

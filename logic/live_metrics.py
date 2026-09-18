@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable
+from collections.abc import Iterable
 
 LANES = ("north", "south", "east", "west")
 
@@ -19,7 +19,7 @@ class LiveMetricsTracker:
         self.total_served_units = 0
         self.max_queue = 0
 
-    def update(self, lane_counts: Dict[str, int], green_lanes: Iterable[str], mode: str) -> None:
+    def update(self, lane_counts: dict[str, int], green_lanes: Iterable[str], mode: str) -> None:
         self.frames += 1
         if str(mode).upper() == "EMERGENCY":
             self.emergency_frames += 1
@@ -34,7 +34,7 @@ class LiveMetricsTracker:
             elif queue > 0:
                 self.total_wait_units += queue
 
-    def snapshot(self) -> Dict[str, float | int]:
+    def snapshot(self) -> dict[str, float | int]:
         frames = self.frames if self.frames > 0 else 1
         return {
             "frames": self.frames,

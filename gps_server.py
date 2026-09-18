@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Dict, List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +17,7 @@ app.add_middleware(
 )
 
 # vehicle_id → {lat, lon, speed, timestamp}
-ambulance_locations: Dict[str, Dict] = {}
+ambulance_locations: dict[str, dict] = {}
 
 
 class AmbulanceLocation(BaseModel):
@@ -28,7 +27,7 @@ class AmbulanceLocation(BaseModel):
     speed: float
 
 
-def _active_ambulances() -> Dict[str, Dict]:
+def _active_ambulances() -> dict[str, dict]:
     """Return ambulances updated within the last 5 minutes, pruning stale entries."""
     cutoff = datetime.now() - timedelta(minutes=5)
     active = {vid: d for vid, d in ambulance_locations.items() if d["timestamp"] > cutoff}
@@ -38,7 +37,7 @@ def _active_ambulances() -> Dict[str, Dict]:
 
 
 @app.post("/update-location")
-async def update_location(location: AmbulanceLocation) -> Dict[str, str]:
+async def update_location(location: AmbulanceLocation) -> dict[str, str]:
     ambulance_locations[location.vehicle_id] = {
         "lat": location.lat,
         "lon": location.lon,
@@ -50,7 +49,7 @@ async def update_location(location: AmbulanceLocation) -> Dict[str, str]:
 
 
 @app.get("/ambulances")
-async def get_ambulances() -> List[Dict]:
+async def get_ambulances() -> list[dict]:
     active = _active_ambulances()
     return [
         {"vehicle_id": vid, "lat": d["lat"], "lon": d["lon"],
@@ -60,11 +59,10 @@ async def get_ambulances() -> List[Dict]:
 
 
 @app.get("/check-ambulance")
-async def check_ambulance() -> Dict[str, object]:
+async def check_ambulance() -> dict[str, object]:
     try:
         from config import EMERGENCY_DISTANCE_KM, EMERGENCY_ETA_SECONDS
-        from gps_utils import (CAMERA_LAT, CAMERA_LON, calculate_distance,
-                               estimate_eta_seconds)
+        from gps_utils import CAMERA_LAT, CAMERA_LON, calculate_distance, estimate_eta_seconds
 
         active = _active_ambulances()
         emergency = False
@@ -100,7 +98,7 @@ async def check_ambulance() -> Dict[str, object]:
 
 
 @app.get("/health")
-async def health_check() -> Dict[str, str]:
+async def health_check() -> dict[str, str]:
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 

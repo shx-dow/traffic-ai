@@ -1,0 +1,39 @@
+[project]
+name = "traffic-ai"
+description = "Falcon: adaptive traffic signal control with emergency preemption, camera detector, and SUMO/synthetic harness"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "matplotlib",
+    "pillow",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "hypothesis", "ruff"]
+rl = ["torch"]
+ml = ["ultralytics"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+    "ignore::DeprecationWarning:torch.jit._serialization",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+# E501: legacy modules carry long draw/comment lines; wrapped on a TODO pass
+# E741: variable named `l` (pervasive in legacy tests, cosmetically noisy)
+# E402: import not at module top (sys.path bootstrapping in tests)
+ignore = ["E501", "E741", "E402"]
+exclude = ["paper", "artifacts", "assets", ".hypothesis"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+exclude = ["paper/", "scripts/", "tests/"]

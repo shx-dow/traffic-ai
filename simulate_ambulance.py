@@ -1,6 +1,5 @@
 
 import time
-from typing import Tuple
 
 import requests
 
@@ -20,7 +19,7 @@ VEHICLE_ID = "AMB_SIM_001"
 
 def calculate_next_position(current_lat: float, current_lon: float,
                           target_lat: float, target_lon: float,
-                          speed_kmh: float, time_seconds: float) -> Tuple[float, float]:
+                          speed_kmh: float, time_seconds: float) -> tuple[float, float]:
     """Calculate next GPS position moving toward target at given speed."""
     import math
 

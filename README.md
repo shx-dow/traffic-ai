@@ -1,5 +1,7 @@
 # AI Traffic Flow Optimizer and Emergency Green Corridor
 
+![CI](https://github.com/shx-dow/traffic-ai/actions/workflows/ci.yml/badge.svg)
+
 ## Scope
 
 This repository implements a judge-ready single-intersection traffic controller with a prototype multi-node pre-clear demo:
@@ -127,15 +129,95 @@ python main.py --run-pipeline --mode adaptive --video-source assets/sample_video
 
 ## Benchmark
 
-Generate baseline vs adaptive metrics:
+Single-seed head-to-head comparison across all scenarios:
 
 ```bash
-python scripts/run_benchmark.py
+python -m sumo_demo.evaluate --steps 900 --seed 42
 ```
 
-Output file:
+Multi-seed benchmark with mean/std aggregation, fair explicit fixed-time
+baseline, verdict per scenario, and a persistent JSON artifact:
 
-- `artifacts/metrics.json`
+```bash
+python -m sumo_demo.benchmark --steps 600 --seeds 42 43 44 45 46
+```
+
+- The fixed-time baseline green is explicit (default 13 s) so the comparison
+  never silently shifts; the default sweep uses 30 seeds (`--seeds 42 ... 71`).
+- When `baseline` and `adaptive` are both benchmarked, the run also reports a
+  matched paired two-sided t-test, a Wilcoxon signed-rank p, the 95% CI of the
+  per-seed mean difference, and Cohen's dz for every scenario (p<0.05 in all
+  five scenarios).
+- Additional controller arms can be benchmarked side by side:
+
+```bash
+python -m sumo_demo.benchmark --controllers baseline adaptive actuated fusion rl
+```
+
+  toggles `actuated` (gap-out), `fusion` (backlog + arrival rate), and `rl`
+  (model-free DQN green-hold baseline) arms. The RL arm needs trained weights
+  (default `profiling/artifacts/rl_policy.pt`):
+
+```bash
+python scripts/train_rl_baseline.py
+```
+
+  Training uses held-out medium-flow seeds and freezes a few-KB torch state
+  dict; greedy eval runs inside the same harness as every other arm.
+
+  `rl_special` hands each scenario to a per-scenario specialist policy, so the
+  same run compares the held-out-medium generalist against policies trained on
+  each scenario's own demand:
+
+```bash
+python -m sumo_demo.benchmark --controllers baseline adaptive actuated fusion rl rl_special
+python scripts/train_rl_baseline.py --scenario low --specialist-dir profiling/artifacts/rl_specialists   # one per scenario
+```
+
+- Experimental variants:
+
+```bash
+python -m sumo_demo.benchmark --demand-model platoon          # correlated bursts
+python -m sumo_demo.benchmark --demand-model lognormal        # log-normal headway platoons
+python -m sumo_demo.benchmark --corridor-sweep                # ambulance per approach
+python -m sumo_demo.benchmark --export-csv profiling/artifacts/benchmark_results.csv
+```
+
+  `--demand-model platoon` swaps independent Poisson arrivals for correlated
+  burst/platoon demand (writes `profiling/artifacts/platoon_results.json`).
+  `--demand-model lognormal` uses log-normal inter-arrival headways (default
+  `--headway-cv 2.0`, 0.4 s floor), clustering arrivals into platoons at
+  cycle-scale while preserving mean flow (writes
+  `profiling/artifacts/lognormal_results.json`).
+  `--corridor-sweep` runs the emergency scenario with the ambulance on every
+  approach (writes `profiling/artifacts/corridor_results.json`). `--export-csv`
+  writes a long-form per-seed CSV so every reported statistic is re-derivable.
+
+- Network-level preemption progression (3-intersection arterial):
+
+```bash
+python -m sumo_demo.network_benchmark                 # baseline vs adaptive, 30 seeds
+```
+
+  Runs the emergency preemption contract along a westbound arterial: each
+  intersection preempts in turn (deterministic 4 s preemption/recovery per
+  node) and adaptive allocation cuts network-wide mean wait from `21.1` to
+  `17.0` s (d=4.08 s, p<0.001, dz=4.20). Writes
+  `profiling/artifacts/network_results.json`; `--export-csv` emits
+  `results/raw/network_results.csv`.
+
+Output file: `profiling/artifacts/benchmark_results.json`
+
+Parameter sensitivity sweeps (writes `profiling/artifacts/ablation_*.json`):
+
+```bash
+python -m sumo_demo.benchmark --ablate switch_gap_relative
+python -m sumo_demo.benchmark --ablate baseline_green
+python -m sumo_demo.benchmark --ablate fusion_weight
+```
+
+Emergency corridor timing (time_to_preemption, corridor_clearance, recovery_time)
+is surfaced automatically when the scenario contains an emergency event.
 
 ## Multi-intersection demo
 
@@ -164,6 +246,31 @@ python tests/test_detector_logic.py
 python tests/test_live_metrics.py
 python tests/test_orchestrator.py
 python tests/test_sumo_demo.py
+python tests/test_detector.py           # falls back to synthetic if no camera/video
+```
+
+### Harness, TraCI slot-in, and emergency temporal contract tests
+
+These tests validate the evaluation harness, the SUMO/TraCI integration
+(mocked and live-stubbed), and the emergency preemption timing contract.
+No real SUMO install is required:
+
+```bash
+python tests/test_harness.py
+python tests/test_traci_slotin.py       # mapping / state-string / XML shape tests
+python tests/test_traci_loop.py         # full bridge loop against a FakeTraCI stub
+python tests/test_emergency_temporal.py # preemption timing, corridor isolation, recovery
+python tests/test_benchmark.py          # multi-seed aggregation + JSON artifact
+python tests/test_emergency_edgecases.py # corner-case preemption matrix
+python tests/test_invariants_fuzz.py     # Hypothesis state-machine invariant fuzzing
+python tests/test_validate_detector.py   # detector ground-truth metric core
+```
+
+Run the whole suite and lint the same way CI does:
+
+```bash
+python -m pytest -q
+ruff check .
 ```
 
 ## SUMO Demo (optional)
@@ -246,3 +353,7 @@ Use this sequence during judging for a clean narrative:
 - "Congestion scoring improves over count-only switching."
 - "Emergency mode supports ambulance and fire-service detection."
 - "We log explainable decisions and measurable KPI deltas."
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -258,7 +258,7 @@ def paired_significance(
     if len(base) != len(cont) or len(base) < 2:
         return None
     n = len(base)
-    diffs = [b - c for b, c in zip(base, cont)]
+    diffs = [b - c for b, c in zip(base, cont, strict=True)]
     md = statistics.fmean(diffs)
     sd = statistics.stdev(diffs)
     df = n - 1
